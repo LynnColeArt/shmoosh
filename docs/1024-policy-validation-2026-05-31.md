@@ -132,8 +132,13 @@ cross-attention assumptions, the accepted policy has a `1.93x` packed-key ratio
 during quantized steps and saves `26.65 MiB` of selected-key payload across a
 30-step horizon.
 
+The accepted policy has since cleared the packed-backend parity lane at both
+20 and 30 steps; see `docs/packed-backend-validation-2026-05-31.md`.
+
 Next:
 
-1. Prototype a Torch-side packed-key metadata object.
-2. Add a debug decode path that matches the NumPy reference codec.
-3. Use that container as the contract for a later fused score kernel.
+1. Cache codec resources per module/backend instead of rebuilding them per
+   attention call.
+2. Warm Triton kernels before timing.
+3. Fuse or reduce query-side projection overhead.
+4. Avoid materializing full score tensors once the score kernel is stable.

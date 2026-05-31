@@ -1,0 +1,127 @@
+# Packed Backend Validation: 2026-05-31
+
+## Scope
+
+This validates the packed attention backend against the accepted native SDXL
+policy:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated30pct-k5-k6-qjl128-policy.json
+```
+
+The goal is parity, not speed. The packed backend uses the Torch/Triton
+packed-key exact-value attention path:
+
+```bash
+--attention-backend packed --packed-backend auto
+```
+
+The policy still leaves the first 30% of denoising steps exact, then quantizes
+the selected seven up-block cross-attention modules.
+
+## Commands
+
+20-step 1024 validation:
+
+```bash
+HF_HUB_DISABLE_XET=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+uv run shmoosh-image-policy-suite \
+  --single-file /home/lynn/.underpaint/models/checkpoints/juggernaut-x-v10/Juggernaut-X-RunDiffusion-NSFW.safetensors \
+  --pipeline-class sdxl \
+  --config /home/lynn/.cache/huggingface/hub/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b \
+  --policy-file configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated30pct-k5-k6-qjl128-policy.json \
+  --case-file configs/underpaint-juggernaut-validation-1024-cases.json \
+  --model-cpu-offload \
+  --local-files-only \
+  --attention-backend packed \
+  --packed-backend auto \
+  --output-dir captures/image-policy-suite-juggernaut-up0-cross-mixed-gated30pct-1024-20step-packed
+```
+
+30-step 1024 validation:
+
+```bash
+HF_HUB_DISABLE_XET=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+uv run shmoosh-image-policy-suite \
+  --single-file /home/lynn/.underpaint/models/checkpoints/juggernaut-x-v10/Juggernaut-X-RunDiffusion-NSFW.safetensors \
+  --pipeline-class sdxl \
+  --config /home/lynn/.cache/huggingface/hub/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b \
+  --policy-file configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated30pct-k5-k6-qjl128-policy.json \
+  --case-file configs/underpaint-juggernaut-validation-1024-30step-cases.json \
+  --model-cpu-offload \
+  --local-files-only \
+  --attention-backend packed \
+  --packed-backend auto \
+  --output-dir captures/image-policy-suite-juggernaut-up0-cross-mixed-gated30pct-1024-30step-packed
+```
+
+## 20-Step Results
+
+| Case | Reference PSNR | Packed PSNR | Packed MSE | Packed MAE |
+| --- | ---: | ---: | ---: | ---: |
+| reading-nook-seed1-1024 | 48.48 dB | 50.52 dB | 0.00000888 | 0.00112699 |
+| maple-leaf-seed2-1024 | 49.45 dB | 49.31 dB | 0.00001171 | 0.00128130 |
+| misty-lake-seed3-1024 | 58.52 dB | 58.61 dB | 0.00000138 | 0.00029679 |
+
+Aggregate:
+
+```text
+reference_mean_psnr=52.15 dB
+packed_mean_psnr=52.81 dB
+reference_min_psnr=48.48 dB
+packed_min_psnr=49.31 dB
+packed_max_mse=0.00001171
+```
+
+## 30-Step Results
+
+| Case | Reference PSNR | Packed PSNR | Packed MSE | Packed MAE |
+| --- | ---: | ---: | ---: | ---: |
+| reading-nook-seed1-1024-30step | 50.33 dB | 49.20 dB | 0.00001201 | 0.00105927 |
+| maple-leaf-seed2-1024-30step | 48.55 dB | 48.65 dB | 0.00001364 | 0.00115821 |
+| misty-lake-seed3-1024-30step | 58.76 dB | 59.12 dB | 0.00000122 | 0.00025663 |
+
+Aggregate:
+
+```text
+reference_mean_psnr=52.55 dB
+packed_mean_psnr=52.33 dB
+reference_min_psnr=48.55 dB
+packed_min_psnr=48.65 dB
+packed_max_mse=0.00001364
+```
+
+## Performance Notes
+
+The packed backend is not a speed result yet. It still materializes score
+tensors and precomputes query-side codec projections in Torch. The first packed
+20-step case also paid visible Triton compile overhead.
+
+Observed packed candidate times:
+
+| Horizon | Case | Baseline Seconds | Packed Seconds | Packed Peak Allocated |
+| --- | --- | ---: | ---: | ---: |
+| 20 | reading-nook | 12.11 | 44.03 | 5232 MiB |
+| 20 | maple-leaf | 8.84 | 21.45 | 5232 MiB |
+| 20 | misty-lake | 8.49 | 21.80 | 5232 MiB |
+| 30 | reading-nook | 15.50 | 34.01 | 5232 MiB |
+| 30 | maple-leaf | 12.10 | 31.94 | 5232 MiB |
+| 30 | misty-lake | 11.79 | 31.68 | 5232 MiB |
+
+These numbers confirm that the packed backend runs through the real image
+pipeline without quality regression. They do not yet show production value for
+4070/3080 workflows.
+
+## Interpretation
+
+Packed backend parity holds at native SDXL resolution for both accepted
+horizons. The 20-step and 30-step suites keep minimum PSNR above the previous
+reference-backend acceptance floor.
+
+The next production slice should be performance-oriented:
+
+1. Cache codec resources per module/backend instead of rebuilding them per
+   attention call.
+2. Warm Triton kernels before timing.
+3. Fuse or reduce query-side projection overhead.
+4. Avoid materializing full score tensors once the score kernel is stable.
