@@ -70,6 +70,50 @@ min_psnr=48.48 dB
 max_mse=0.00001419
 ```
 
+## 30-Step Horizon Transfer
+
+The same exact-first-30% policy was then tested at 30 denoising steps. The
+percentage gate resolved to start step 9.
+
+Compass A/B:
+
+```text
+mse=0.00007670
+mae=0.00257249
+psnr=41.15 dB
+```
+
+Validation command:
+
+```bash
+HF_HUB_DISABLE_XET=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+uv run turbo-d-image-policy-suite \
+  --single-file /home/lynn/.underpaint/models/checkpoints/juggernaut-x-v10/Juggernaut-X-RunDiffusion-NSFW.safetensors \
+  --pipeline-class sdxl \
+  --config /home/lynn/.cache/huggingface/hub/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b \
+  --policy-file configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated30pct-k5-k6-qjl128-policy.json \
+  --case-file configs/underpaint-juggernaut-validation-1024-30step-cases.json \
+  --model-cpu-offload \
+  --local-files-only \
+  --output-dir captures/image-policy-suite-juggernaut-up0-cross-mixed-gated30pct-1024-30step
+```
+
+Results:
+
+| Case | Seed | MSE | MAE | PSNR |
+| --- | ---: | ---: | ---: | ---: |
+| reading-nook-seed1-1024-30step | 1 | 0.00000928 | 0.00098883 | 50.33 dB |
+| maple-leaf-seed2-1024-30step | 2 | 0.00001396 | 0.00123418 | 48.55 dB |
+| misty-lake-seed3-1024-30step | 3 | 0.00000133 | 0.00027147 | 58.76 dB |
+
+Aggregate:
+
+```text
+mean_psnr=52.55 dB
+min_psnr=48.55 dB
+max_mse=0.00001396
+```
+
 ## Interpretation
 
 The 30% native-resolution gate is the best policy candidate so far. It validates
@@ -83,7 +127,7 @@ depends on packed K storage and a fused attention path.
 
 ## Next Slice
 
-1. Run one 1024 validation suite at 30 steps to test horizon transfer.
-2. Start the packed-K design note around the accepted 1024 policy.
-3. Estimate memory-bandwidth savings for the seven selected cross-attention
+1. Start the packed-K design note around the accepted 1024 policy.
+2. Estimate memory-bandwidth savings for the seven selected cross-attention
    modules under packed K5/K6 plus QJL-128.
+3. Prototype a Torch-side packed-key metadata format before attempting kernels.

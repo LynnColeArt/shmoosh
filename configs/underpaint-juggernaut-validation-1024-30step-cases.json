@@ -1,0 +1,26 @@
+{
+  "description": "Native-resolution 30-step prompt/seed cases for validating Underpaint Juggernaut SDXL policies.",
+  "defaults": {
+    "steps": 30,
+    "height": 1024,
+    "width": 1024,
+    "guidance_scale": 5.0
+  },
+  "cases": [
+    {
+      "id": "reading-nook-seed1-1024-30step",
+      "prompt": "a cozy reading nook with a green velvet chair, a small wooden table, warm window light, realistic photo",
+      "seed": 1
+    },
+    {
+      "id": "maple-leaf-seed2-1024-30step",
+      "prompt": "a macro photograph of dew on a red maple leaf resting on dark slate, shallow depth of field",
+      "seed": 2
+    },
+    {
+      "id": "misty-lake-seed3-1024-30step",
+      "prompt": "a cinematic wide photo of a small sailboat on a misty lake at sunrise, soft natural light",
+      "seed": 3
+    }
+  ]
+}

@@ -4,16 +4,23 @@
   "source": "docs/1024-policy-validation-2026-05-31.md",
   "validation": {
     "quantize_start_percent": 0.3,
-    "accepted_horizon_steps": [20],
+    "accepted_horizon_steps": [20, 30],
     "accepted_resolution": "1024x1024",
     "prompt_count": 4,
     "seed_count": 4,
     "resolved_quantize_start_step_at_20": 6,
+    "resolved_quantize_start_step_at_30": 9,
     "compass_20_step_1024x1024": {
       "output_dir": "captures/image-ab-juggernaut-up0-cross-mixed-gated30pct-1024-20step",
       "mse": 0.00002047312409558799,
       "mae": 0.0013479258632287383,
       "psnr_db": 46.8881588113081
+    },
+    "compass_30_step_1024x1024": {
+      "output_dir": "captures/image-ab-juggernaut-up0-cross-mixed-gated30pct-1024-30step",
+      "mse": 0.0000767009551054798,
+      "mae": 0.0025724933948367834,
+      "psnr_db": 41.151992280398474
     },
     "validation_suite_1024": {
       "case_file": "configs/underpaint-juggernaut-validation-1024-cases.json",
@@ -22,6 +29,14 @@
       "min_psnr_db": 48.47992469584406,
       "mean_psnr_db": 52.14817658217481,
       "max_mse": 0.000014190821275406051
+    },
+    "validation_suite_1024_30step": {
+      "case_file": "configs/underpaint-juggernaut-validation-1024-30step-cases.json",
+      "output_dir": "captures/image-policy-suite-juggernaut-up0-cross-mixed-gated30pct-1024-30step",
+      "case_count": 3,
+      "min_psnr_db": 48.549865779982895,
+      "mean_psnr_db": 52.54686699920645,
+      "max_mse": 0.00001396411516907392
     },
     "note": "1024px native-resolution candidate. Exact first 30% of denoising steps, then quantize the remaining steps."
   },

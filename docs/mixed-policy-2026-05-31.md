@@ -142,10 +142,11 @@ It reproduced the 20-step compass result (`psnr=46.75 dB`), held at 30 steps
 Native 1024px validation is recorded in
 `docs/1024-policy-validation-2026-05-31.md`. At 1024x1024, exact-first 30%
 became the accepted gate, clearing the three-case suite with `min_psnr=48.48 dB`
-and `mean_psnr=52.15 dB`.
+and `mean_psnr=52.15 dB`. The same policy also held at 30 steps with
+`min_psnr=48.55 dB` and `mean_psnr=52.55 dB`.
 
 ## Next Slice
 
-1. Test the accepted 1024 policy at a 30-step horizon.
-2. Start packed-K production design against the 1024 policy surface.
+1. Start packed-K production design against the 1024 policy surface.
+2. Estimate packed K5/K6 plus QJL-128 bandwidth savings for the selected modules.
 3. Continue the up-block sweep against the timestep-aware policy surface.

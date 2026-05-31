@@ -243,10 +243,11 @@ configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated30pct-k5-k6-qjl128-polic
 ```
 
 It cleared the three-case 1024 validation suite with `min_psnr=48.48 dB` and
-`mean_psnr=52.15 dB`.
+`mean_psnr=52.15 dB`, then held at 30 steps with `min_psnr=48.55 dB` and
+`mean_psnr=52.55 dB`.
 
 ## Next Slice
 
-1. Test the accepted 1024 policy at a 30-step horizon.
-2. Start packed-K production design against the 1024 policy surface.
-3. Estimate packed K5/K6 plus QJL-128 bandwidth savings for the selected modules.
+1. Start packed-K production design against the 1024 policy surface.
+2. Estimate packed K5/K6 plus QJL-128 bandwidth savings for the selected modules.
+3. Prototype a Torch-side packed-key metadata format before attempting kernels.

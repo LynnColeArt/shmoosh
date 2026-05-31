@@ -263,7 +263,8 @@ configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated30pct-k5-k6-qjl128-polic
 
 It leaves the first 30% of denoising exact, then quantizes the selected seven
 modules. It cleared the 1024 compass A/B with `psnr=46.89 dB` and a three-case
-1024 validation suite with `min_psnr=48.48 dB`; see
+1024 validation suite with `min_psnr=48.48 dB`. At 30 steps, the same policy
+cleared the 1024 validation suite with `min_psnr=48.55 dB`; see
 `docs/1024-policy-validation-2026-05-31.md`.
 
 ## GPU Target
