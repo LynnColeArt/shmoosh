@@ -116,3 +116,36 @@ The current NumPy implementation does not bit-pack residual signs; these are the
 2. Does a timestep-aware policy need QJL everywhere, or only in the fragile modules?
 3. Can the residual correction be rescaled or regularized so QJL-64 becomes useful?
 4. Does the same metric advantage survive inside an actual attention processor during image generation?
+
+## Runtime Processor Prototype
+
+Follow-up implementation added:
+
+- `turbo_d.runtime_attention.turbo_d_attention_output`
+- `turbo_d.diffusers_processor.TurboDAttnProcessor`
+- `turbo-d-runtime-smoke`
+
+This is a deliberately slow behavioral path. It mirrors Diffusers `AttnProcessor2_0`, but moves post-projection Q/K/V tensors through the NumPy Turbo-D reference codec. It is useful for correctness and policy experiments, not speed.
+
+Smoke results on representative captures:
+
+```text
+self-attn capture_000, 3-bit QJL-128, quantized V:
+output_mse=0.0008593021
+output_cosine_error=0.0060882026
+
+self-attn capture_000, 3-bit QJL-128, exact V:
+output_mse=0.00052545276
+output_cosine_error=0.0038128125
+
+cross-attn capture_003, 3-bit QJL-128, quantized V:
+output_mse=0.0012851002
+output_cosine_error=0.50838081
+
+cross-attn capture_003, 3-bit QJL-128, exact V:
+output_mse=0.00041547219
+output_cosine_error=0.50249268
+active_output_cosine_error=0.00498536 active_rows=10240/20480
+```
+
+The cross-attention raw cosine value is misleading because half the rows in that capture have zero-norm reference outputs, likely from the unconditional half of classifier-free guidance. Filtering to active rows shows a small cosine error. Exact V improves MSE substantially, so early runtime policies should test K-only or higher-precision V variants before compressing V as aggressively as K.

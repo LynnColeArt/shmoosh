@@ -24,6 +24,7 @@ dev = [
 [project.scripts]
 turbo-d-attention-probe = "turbo_d.cli.attention_probe:main"
 turbo-d-sweep-captures = "turbo_d.cli.sweep_captures:main"
+turbo-d-runtime-smoke = "turbo_d.cli.runtime_smoke:main"
 
 [build-system]
 requires = ["hatchling"]

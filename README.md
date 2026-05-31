@@ -75,6 +75,23 @@ uv run turbo-d-sweep-captures captures/underpaint-juggernaut \
   --qjl-bits 0,128
 ```
 
+Run the runtime-style attention smoke:
+
+```bash
+uv run turbo-d-runtime-smoke captures/underpaint-juggernaut/capture_000.npz \
+  --bits 3 \
+  --qjl-bits 128
+```
+
+Use exact values to test K/score compression separately from V compression:
+
+```bash
+uv run turbo-d-runtime-smoke captures/underpaint-juggernaut/capture_000.npz \
+  --bits 3 \
+  --qjl-bits 128 \
+  --exact-values
+```
+
 ## GPU Target
 
 The practical target is the 10-12GB VRAM band:

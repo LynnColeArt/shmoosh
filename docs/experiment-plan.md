@@ -79,7 +79,9 @@ Goal: make RTX 4070/3080 workflows measurably more useful.
 
 Runtime path:
 
-- start with a Torch attention processor;
+- start with a slow behavioral attention processor;
+- use active-row metrics for cross-attention because classifier-free guidance can create zero-norm rows;
+- test K-only or higher-precision V variants before full K/V compression;
 - avoid full dequantization where possible;
 - move hot loops to Triton only after profiling;
 - benchmark against xFormers/SDPA/FlashAttention where available.
