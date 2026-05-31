@@ -81,8 +81,9 @@ bandwidth benefit.
 
 ## Torch-Side Metadata Shape
 
-The first Torch-side prototype should express packed keys as an explicit
-container, not as an overloaded tensor:
+The first Torch-side prototype expresses packed keys as an explicit container,
+not as an overloaded tensor. The implemented contract is
+`shmoosh.packed_keys.PackedKeyBlock`:
 
 ```text
 PackedKeyBlock
@@ -93,12 +94,14 @@ PackedKeyBlock
   bits: int
   qjl_bits: int
   head_dim: int
-  rotation_id: int
-  codebook_id: int
-  qjl_projection_id: int
+  seed: int
+  codebook_samples: int
+  lloyd_iters: int
 ```
 
-The metadata IDs should key immutable per-module/per-bit resources:
+The block currently stores deterministic codec parameters instead of materialized
+resource IDs. A fused kernel should lower those parameters into immutable
+per-module/per-bit resources:
 
 | Resource | Scope |
 | --- | --- |
@@ -109,6 +112,22 @@ The metadata IDs should key immutable per-module/per-bit resources:
 The policy already uses deterministic `processor_seed=11`, so the first packed
 prototype can reuse stable resource IDs instead of storing matrices inside every
 block.
+
+The debug smoke command is:
+
+```bash
+uv run shmoosh-packed-key-smoke \
+  --batch-size 1 \
+  --heads 20 \
+  --tokens 77 \
+  --dim 64 \
+  --bits 5 \
+  --qjl-bits 128
+```
+
+It validates the tensor shapes, byte counts, and reference decode path. It does
+not claim production speed, because the decode path still expands K before
+attention.
 
 ## Kernel Direction
 

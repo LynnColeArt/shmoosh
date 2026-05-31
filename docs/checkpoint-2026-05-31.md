@@ -25,7 +25,7 @@ Commands run:
 ```bash
 uv sync --extra dev
 uv run python -m compileall -q src experiments tests
-uv run pytest
+uv run python -m pytest
 uv run shmoosh-attention-probe --tokens 128 --dim 64 --heads 4 --bits 3 --qjl-bits 64 --seed 11
 ```
 

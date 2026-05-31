@@ -23,7 +23,7 @@ This repo starts with a CPU reference implementation, not a production kernel:
 
 ```bash
 uv sync --extra dev
-uv run pytest
+uv run python -m pytest
 uv run shmoosh-attention-probe --tokens 256 --dim 128 --bits 4 --qjl-bits 128
 ```
 
@@ -294,3 +294,20 @@ With SDXL cross-attention assumptions, the selected modules save `1.27 MiB` of
 key payload per quantized step (`1.93x` packed-key ratio). Across the validated
 30-step horizon, that is `26.65 MiB` of selected-key payload; see
 `docs/packed-k-design-2026-05-31.md`.
+
+Smoke-test the Torch-side packed-key block contract:
+
+```bash
+uv run shmoosh-packed-key-smoke \
+  --batch-size 1 \
+  --heads 20 \
+  --tokens 77 \
+  --dim 64 \
+  --bits 5 \
+  --qjl-bits 128
+```
+
+This is still a debug path: it packs K into kernel-shaped tensors, verifies byte
+accounting, and decodes through the reference codec. The production value comes
+from the next step, where the score kernel consumes `PackedKeyBlock.codes`
+directly instead of expanding full fp16 K first.

@@ -1,0 +1,64 @@
+from __future__ import annotations
+
+import pytest
+
+from shmoosh.packed_keys import _pack_bits, _unpack_bits, encode_packed_keys
+from shmoosh.quantization import ShmooshCodec
+
+torch = pytest.importorskip("torch")
+
+
+@pytest.mark.parametrize("bits", [1, 3, 5, 6, 8])
+def test_pack_bits_round_trips(bits: int) -> None:
+    values = torch.arange(0, 17, dtype=torch.int64) % (1 << bits)
+
+    packed = _pack_bits(values, bits=bits)
+    unpacked = _unpack_bits(packed, bits=bits, value_count=values.shape[-1])
+
+    assert torch.equal(unpacked, values)
+
+
+def test_encode_packed_keys_matches_reference_decode() -> None:
+    generator = torch.Generator().manual_seed(0)
+    keys = torch.randn(1, 2, 5, 8, generator=generator)
+    block = encode_packed_keys(
+        keys,
+        bits=4,
+        qjl_bits=16,
+        seed=3,
+        codebook_samples=2_000,
+    )
+    codec = ShmooshCodec(dim=8, bits=4, qjl_bits=16, seed=3, codebook_samples=2_000)
+    reference = torch.from_numpy(codec.decode(codec.encode(keys.numpy())))
+
+    assert block.codes.shape == (1, 2, 5, 4)
+    assert block.residual_signs is not None
+    assert block.residual_signs.shape == (1, 2, 5, 2)
+    assert block.shape == (1, 2, 5, 8)
+    assert block.packed_key_bytes() == 1 * 2 * 5 * (4 + 4 + 2 + 4)
+    assert torch.allclose(block.decode(), reference)
+
+
+def test_encode_packed_keys_without_qjl_has_no_residual_payload() -> None:
+    keys = torch.zeros(1, 2, 5, 8)
+
+    block = encode_packed_keys(keys, bits=4, qjl_bits=0, seed=3, codebook_samples=512)
+
+    assert block.residual_signs is None
+    assert block.residual_norms is None
+    assert block.packed_key_bytes() == 1 * 2 * 5 * (4 + 4)
+
+
+def test_packed_key_bytes_match_sdxl_assumption() -> None:
+    keys = torch.zeros(2, 20, 77, 64)
+    block = encode_packed_keys(
+        keys,
+        bits=5,
+        qjl_bits=128,
+        seed=11,
+        codebook_samples=512,
+    )
+
+    assert block.exact_key_bytes() == 394_240
+    assert block.packed_key_bytes() == 197_120
+    assert block.compression_ratio() == 2.0
