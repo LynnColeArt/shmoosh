@@ -176,6 +176,27 @@ uv run turbo-d-image-ab-smoke \
   --output-dir captures/image-ab-juggernaut-policy49-k5-20step
 ```
 
+Validate a policy across prompt/seed cases:
+
+```bash
+uv run turbo-d-image-policy-suite \
+  --single-file /home/lynn/.underpaint/models/checkpoints/juggernaut-x-v10/Juggernaut-X-RunDiffusion-NSFW.safetensors \
+  --pipeline-class sdxl \
+  --config /home/lynn/.cache/huggingface/hub/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b \
+  --policy-file configs/underpaint-juggernaut-sdxl-k5-qjl128-policy.json \
+  --case-file configs/underpaint-juggernaut-validation-cases.json \
+  --steps 20 \
+  --height 512 \
+  --width 512 \
+  --model-cpu-offload \
+  --local-files-only \
+  --output-dir captures/image-policy-suite-juggernaut-k5-20step
+```
+
+The current K5 policy cleared the three-case validation suite with
+`min_psnr=36.68 dB` and `mean_psnr=44.63 dB`; see
+`docs/policy-validation-2026-05-31.md`.
+
 ## GPU Target
 
 The practical target is the 10-12GB VRAM band:

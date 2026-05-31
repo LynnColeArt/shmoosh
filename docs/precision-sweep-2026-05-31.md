@@ -85,9 +85,19 @@ psnr=32.95 dB
 This should supersede the K3 policy for 20-step tests, while the K3 policy
 remains useful as evidence for the short-horizon failure mode.
 
+Follow-up validation across three additional prompt/seed pairs is recorded in:
+
+```text
+docs/policy-validation-2026-05-31.md
+```
+
+All three additional cases cleared the rough 30 dB PSNR gate, with minimum
+`psnr=36.68 dB`.
+
 ## Next Slice
 
-1. Test the K5 policy on 2-3 additional prompts/seeds.
-2. If it holds, expand to neighboring up-block cross-attention modules.
+1. Expand to neighboring up-block cross-attention modules.
+2. Promote any modules that clear the 20-step validation gate into a combined
+   policy.
 3. Start designing timestep/layer policy machinery before broadening beyond
    hand-selected modules.

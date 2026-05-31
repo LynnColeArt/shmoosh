@@ -4,9 +4,10 @@
   "source": "docs/precision-sweep-2026-05-31.md",
   "validation": {
     "accepted_horizon_steps": 20,
-    "prompt_count": 1,
-    "seed_count": 1,
-    "note": "Module 49 with K5 + QJL-128 + exact V preserved the 20-step image structure in the first focused precision sweep. Treat this as a seed candidate, not a broad SDXL policy."
+    "prompt_count": 4,
+    "seed_count": 4,
+    "suite": "docs/policy-validation-2026-05-31.md",
+    "note": "Module 49 with K5 + QJL-128 + exact V preserved the 20-step image structure across the original compass prompt plus three additional prompt/seed cases. Treat this as a narrow module-49 candidate, not a broad SDXL policy."
   },
   "selection_metric": {
     "candidate_psnr_db": 30.0,

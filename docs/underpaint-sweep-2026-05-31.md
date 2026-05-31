@@ -214,3 +214,7 @@ The focused precision sweep in `docs/precision-sweep-2026-05-31.md` found that
 K4 still drifted at 20 steps (`psnr=25.10 dB`), while K5 recovered most of the
 exact-processor behavior (`psnr=32.95 dB`). The first 20-step candidate policy
 is `configs/underpaint-juggernaut-sdxl-k5-qjl128-policy.json`.
+
+Additional policy validation is recorded in `docs/policy-validation-2026-05-31.md`.
+Across three new prompt/seed cases, module 49 with K5 stayed above the rough
+quality gate (`min_psnr=36.68 dB`, `mean_psnr=44.63 dB`).

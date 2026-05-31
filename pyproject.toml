@@ -28,6 +28,7 @@ turbo-d-sweep-captures = "turbo_d.cli.sweep_captures:main"
 turbo-d-runtime-smoke = "turbo_d.cli.runtime_smoke:main"
 turbo-d-image-ab-smoke = "turbo_d.cli.image_ab_smoke:main"
 turbo-d-image-module-sweep = "turbo_d.cli.image_module_sweep:main"
+turbo-d-image-policy-suite = "turbo_d.cli.image_policy_suite:main"
 
 [build-system]
 requires = ["hatchling"]
