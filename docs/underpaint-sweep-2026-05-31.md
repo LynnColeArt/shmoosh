@@ -197,3 +197,9 @@ calibration produced `mse=0.00001533` and `psnr=48.14 dB`, while the
 `K3 + QJL-128 + exact V` run produced `mse=0.00433298` and `psnr=23.63 dB`.
 That means the harness itself is stable, and the first real image delta is
 coming from key compression rather than processor plumbing.
+
+An 8-step module sweep is recorded in `docs/image-module-sweep-2026-05-31.md`.
+In a four-module probe, up-block cross-attention module 49 had the lowest image
+delta (`mse=0.00049776`, `psnr=33.03 dB`), while down-block cross-attention
+module 9 had the largest delta (`mse=0.00173393`, `psnr=27.61 dB`). The first
+tracked seed policy is `configs/underpaint-juggernaut-sdxl-k3-qjl128-policy.json`.

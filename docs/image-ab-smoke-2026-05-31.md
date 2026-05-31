@@ -88,8 +88,10 @@ but the generation does not collapse.
 
 ## Next Slice
 
-1. Run the same A/B at 8-12 steps on module 8 and inspect visible structure.
-2. Compare nearby self-attention and cross-attention modules one at a time.
-3. Add policy scheduling by module name so fragile modules can stay exact.
+1. Consume `configs/underpaint-juggernaut-sdxl-k3-qjl128-policy.json` from the
+   image A/B harness.
+2. Run a 12-20 step A/B with the current candidate module enabled.
+3. Expand the sweep over more up-block modules before touching down-block
+   attention broadly.
 4. After a stable image policy emerges, replace the NumPy processor with a
    Torch/Triton implementation that can actually reduce runtime memory traffic.

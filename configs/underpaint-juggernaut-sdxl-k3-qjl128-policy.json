@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "description": "First-pass Turbo-D candidate policy for the local Underpaint Juggernaut SDXL checkpoint.",
+  "source": "docs/image-module-sweep-2026-05-31.md",
+  "selection_metric": {
+    "candidate_psnr_db": 30.0,
+    "note": "Image PSNR is a coarse first-pass gate; visually inspect candidates before broadening policy."
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "turbo_policy": {
+    "bits": 3,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 128,
+    "codebook_samples": 20000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false
+  },
+  "quantized_modules": [
+    {
+      "index": 49,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn2",
+      "mse": 0.0004977560602128506,
+      "mae": 0.010520056821405888,
+      "psnr_db": 33.02983443704414
+    }
+  ],
+  "exact_modules": [
+    {
+      "index": 8,
+      "name": "down_blocks.2.attentions.0.transformer_blocks.0.attn1",
+      "mse": 0.0013145742705091834,
+      "mae": 0.023217568174004555,
+      "psnr_db": 28.81214872196558
+    },
+    {
+      "index": 9,
+      "name": "down_blocks.2.attentions.0.transformer_blocks.0.attn2",
+      "mse": 0.0017339278711006045,
+      "mae": 0.024613941088318825,
+      "psnr_db": 27.609689725083236
+    },
+    {
+      "index": 48,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn1",
+      "mse": 0.0011023683473467827,
+      "mae": 0.017190201207995415,
+      "psnr_db": 29.5767326529311
+    }
+  ]
+}

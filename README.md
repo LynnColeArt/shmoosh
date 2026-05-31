@@ -121,6 +121,27 @@ uv run turbo-d-image-ab-smoke \
 The default image smoke policy is `K3 + QJL-128 + exact V`. Add
 `--quantize-values` when testing value compression too.
 
+Sweep several modules with one baseline image:
+
+```bash
+uv run turbo-d-image-module-sweep \
+  --single-file /home/lynn/.underpaint/models/checkpoints/juggernaut-x-v10/Juggernaut-X-RunDiffusion-NSFW.safetensors \
+  --pipeline-class sdxl \
+  --config /home/lynn/.cache/huggingface/hub/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b \
+  --prompt "a restored archival photo of a brass compass on a workbench" \
+  --steps 8 \
+  --height 512 \
+  --width 512 \
+  --module-indices 8,9,48,49 \
+  --model-cpu-offload \
+  --local-files-only \
+  --output-dir captures/image-module-sweep-juggernaut-8step
+```
+
+The module sweep writes `summary.csv`, `summary.json`, and a first-pass
+`suggested_policy.json`. The current tracked seed policy is
+`configs/underpaint-juggernaut-sdxl-k3-qjl128-policy.json`.
+
 ## GPU Target
 
 The practical target is the 10-12GB VRAM band:
