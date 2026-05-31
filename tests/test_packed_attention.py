@@ -6,6 +6,7 @@ import pytest
 from shmoosh.packed_attention import (
     encode_and_attention_output,
     packed_key_attention_output,
+    triton_packed_key_attention_output,
 )
 from shmoosh.packed_keys import encode_packed_keys
 from shmoosh.packed_scores import triton
@@ -83,6 +84,25 @@ def test_triton_packed_key_attention_matches_torch() -> None:
 
     assert triton_output.shape == torch_output.shape
     assert torch.allclose(triton_output, torch_output, atol=2e-5, rtol=1e-5)
+
+
+@pytest.mark.skipif(
+    triton is None or not torch.cuda.is_available(),
+    reason="CUDA Triton is not available",
+)
+def test_fused_triton_attention_rejects_large_key_tile() -> None:
+    query = torch.zeros(1, 2, 4, 8, device="cuda")
+    key = torch.zeros(1, 2, 6, 8, device="cuda")
+    value = torch.zeros(1, 2, 6, 8, device="cuda")
+    block = encode_packed_keys(key, bits=4, qjl_bits=0, seed=5, codebook_samples=512)
+
+    with pytest.raises(ValueError, match="key_tokens"):
+        triton_packed_key_attention_output(
+            query,
+            block,
+            value,
+            block_k=4,
+        )
 
 
 def _reference_output(query, key, value, *, bits, qjl_bits, seed, codebook_samples):

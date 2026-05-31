@@ -141,6 +141,27 @@ codec_cache_entries=1
 resource_cache_entries=1
 ```
 
-This is still not an end-to-end speed claim. The next production slice should
-fuse or reduce query-side projection overhead and avoid materializing full score
-tensors once the score kernel is stable.
+This is still not an end-to-end speed claim.
+
+## Fused Output Slice
+
+The next slice introduced a fused Triton packed-K attention output path for
+text-key tiles up to `128` tokens. The fused path computes packed scores,
+softmax weights, and exact-V output accumulation inside one Triton kernel, so it
+does not materialize the full `(batch, heads, query_tokens, key_tokens)` score
+tensor. Larger key sets, CPU runs, and explicit `torch` backend runs continue
+through the materialized-score fallback.
+
+A same-process CUDA microcheck on the RTX 4070 compared fused output against
+the materialized Triton score path for a `1x20x64x64` query and `77` packed text
+keys:
+
+```text
+max_delta=0.000244140625
+fused_ms_per_iter=0.1641
+materialized_ms_per_iter=0.1953
+```
+
+The fused kernel currently still materializes rotated query and QJL-projected
+query tensors before launch. That leaves query-side projection fusion as the
+next performance slice.

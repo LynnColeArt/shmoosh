@@ -243,19 +243,32 @@ processors before timed generation. This removes repeated codebook/rotation/QJL
 resource construction from the hot image path and moves Triton compilation out
 of the measured Shmoosh run.
 
+The packed backend now also routes CUDA `auto`/`triton` attention through a
+fused Triton output kernel when the key sequence fits in the fixed `128` token
+text-key tile. That kernel keeps V exact, consumes packed K directly, applies
+softmax, and writes the final attention output without allocating a full score
+tensor. Larger key sets keep using the materialized Triton score fallback.
+
 ## Kernel Direction
 
-The simplest production path is a two-stage Torch/Triton design:
+The current production path is a staged Torch/Triton design:
 
 1. Encode K after `to_k` for selected modules and selected timesteps.
 2. In the attention score kernel, consume packed codes directly.
-3. Keep V exact and use existing attention output accumulation.
+3. For text-key tiles, fuse softmax and exact-V output accumulation into the
+   packed-K Triton kernel.
+4. For larger key sets, keep V exact and use existing attention output
+   accumulation as a fallback.
 
 The score computation can avoid reconstructing full K vectors by rotating query
 tiles into codec space, accumulating codebook dot products, then adding the QJL
 residual correction. A temporary reconstruct-then-attend kernel is useful for
 debugging, but it should not be treated as the production target because it
 reintroduces the fp16 K bandwidth.
+
+The next kernel step is to fold query rotation and QJL projection into the
+fused kernel, reducing the extra projected-query tensors that still surround the
+current fused output launch.
 
 ## Acceptance
 
