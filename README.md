@@ -208,6 +208,18 @@ It enables modules `49,59,61,65,67` and cleared the 20-step compass A/B with
 `min_psnr=39.47 dB` and `mean_psnr=43.39 dB`; see
 `docs/up-cross-sweep-2026-05-31.md`.
 
+A second up-block candidate is:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-attn1-cross-k6-qjl128-policy.json
+```
+
+It enables modules `79,87` at K6. The K5 single-module gate found modules
+`79,85,87`, but they did not compose. The K6 pair cleared the 20-step compass
+A/B with `psnr=42.50 dB` and the three-case validation suite with
+`min_psnr=42.66 dB` and `mean_psnr=47.24 dB`; see
+`docs/up-cross-attn1-sweep-2026-05-31.md`.
+
 ## GPU Target
 
 The practical target is the 10-12GB VRAM band:

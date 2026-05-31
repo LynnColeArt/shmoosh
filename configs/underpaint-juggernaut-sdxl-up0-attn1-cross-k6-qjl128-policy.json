@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "description": "K6 Turbo-D policy for selected up_blocks.0.attentions.1 cross-attention modules in the local Underpaint Juggernaut SDXL checkpoint.",
+  "source": "docs/up-cross-attn1-sweep-2026-05-31.md",
+  "validation": {
+    "accepted_horizon_steps": 20,
+    "prompt_count": 4,
+    "seed_count": 4,
+    "combined_policy": {
+      "modules": [79, 87],
+      "bits": 6,
+      "mse": 0.00005620475349132903,
+      "mae": 0.0035560857504606247,
+      "psnr_db": 42.50226952620387
+    },
+    "rejected_combined_probes": [
+      {
+        "modules": [79, 85, 87],
+        "bits": 5,
+        "mse": 0.002717816038057208,
+        "mae": 0.029276421293616295,
+        "psnr_db": 25.657799428796363,
+        "reason": "Single-module K5 pass set did not compose."
+      },
+      {
+        "modules": [79, 87],
+        "bits": 5,
+        "mse": 0.002938735531643033,
+        "mae": 0.029977789148688316,
+        "psnr_db": 25.31839496035634,
+        "reason": "The two strongest K5 modules still did not compose at K5."
+      },
+      {
+        "modules": [79, 85, 87],
+        "bits": 6,
+        "mse": 0.0013422727352008224,
+        "mae": 0.018927790224552155,
+        "psnr_db": 28.721592312919796,
+        "reason": "Borderline module 85 did not compose with the strong K6 pair."
+      }
+    ],
+    "validation_suite": {
+      "case_file": "configs/underpaint-juggernaut-validation-cases.json",
+      "output_dir": "captures/image-policy-suite-juggernaut-up0-attn1-cross-k6-20step",
+      "case_count": 3,
+      "min_psnr_db": 42.66089531016908,
+      "mean_psnr_db": 47.238924221888986,
+      "max_mse": 0.00005418891669251025
+    },
+    "note": "This group needs stricter composition testing than a single-module K5 gate. Modules 79 and 87 compose at K6; module 85 stays exact."
+  },
+  "selection_metric": {
+    "candidate_psnr_db": 30.0,
+    "note": "K5 single-module screening identified modules 79, 85, and 87, but only the strong pair 79 and 87 survived combined testing at K6."
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "turbo_policy": {
+    "bits": 6,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 128,
+    "codebook_samples": 20000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false
+  },
+  "quantized_modules": [
+    {
+      "index": 79,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.5.attn2",
+      "k5_single_module_mse": 0.00005094487642054446,
+      "k5_single_module_mae": 0.0029783162754029036,
+      "k5_single_module_psnr_db": 42.92899486911212
+    },
+    {
+      "index": 87,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.9.attn2",
+      "k5_single_module_mse": 0.000045752181904390454,
+      "k5_single_module_mae": 0.003630649298429489,
+      "k5_single_module_psnr_db": 43.39588189762749
+    }
+  ],
+  "exact_modules": [
+    {
+      "index": 69,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.0.attn2",
+      "k5_single_module_mse": 0.0031785659957677126,
+      "k5_single_module_mae": 0.032259318977594376,
+      "k5_single_module_psnr_db": 24.97768766992625
+    },
+    {
+      "index": 71,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.1.attn2",
+      "k5_single_module_mse": 0.002970576286315918,
+      "k5_single_module_mae": 0.030988872051239014,
+      "k5_single_module_psnr_db": 25.271592901815424
+    },
+    {
+      "index": 73,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.2.attn2",
+      "k5_single_module_mse": 0.0018462484003975987,
+      "k5_single_module_mae": 0.022038668394088745,
+      "k5_single_module_psnr_db": 27.337098679555783
+    },
+    {
+      "index": 75,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.3.attn2",
+      "k5_single_module_mse": 0.0017814949387684464,
+      "k5_single_module_mae": 0.020763158798217773,
+      "k5_single_module_psnr_db": 27.492154071429166
+    },
+    {
+      "index": 77,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.4.attn2",
+      "k5_single_module_mse": 0.0035678346175700426,
+      "k5_single_module_mae": 0.034269869327545166,
+      "k5_single_module_psnr_db": 24.475952849969737
+    },
+    {
+      "index": 81,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.6.attn2",
+      "k5_single_module_mse": 0.0024206393864005804,
+      "k5_single_module_mae": 0.029010603204369545,
+      "k5_single_module_psnr_db": 26.16069904553056
+    },
+    {
+      "index": 83,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.7.attn2",
+      "k5_single_module_mse": 0.003152621677145362,
+      "k5_single_module_mae": 0.03123195469379425,
+      "k5_single_module_psnr_db": 25.01328142600075
+    },
+    {
+      "index": 85,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.8.attn2",
+      "k5_single_module_mse": 0.0008488835301250219,
+      "k5_single_module_mae": 0.014093935489654541,
+      "k5_single_module_psnr_db": 30.711518924343558,
+      "reason": "Single-module K5 passed, but combined K6 with modules 79 and 87 failed."
+    }
+  ]
+}

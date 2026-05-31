@@ -103,9 +103,43 @@ The combined candidate is therefore stronger than the single-prompt compass
 result alone suggested. It still needs broader seed, resolution, and step-count
 coverage before being treated as a production policy.
 
+## K6 Up-Block Attention.1 Policy
+
+The next up-block group needed a stricter policy:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-attn1-cross-k6-qjl128-policy.json
+```
+
+The K5 single-module gate found modules `79,85,87`, but the combined K5 policy
+failed (`psnr=25.66 dB`). The accepted candidate uses K6 for modules `79,87`
+and leaves module `85` exact. Validation outputs:
+
+```text
+captures/image-policy-suite-juggernaut-up0-attn1-cross-k6-20step/summary.csv
+captures/image-policy-suite-juggernaut-up0-attn1-cross-k6-20step/summary.json
+```
+
+| Case | Seed | MSE | MAE | PSNR |
+| --- | ---: | ---: | ---: | ---: |
+| reading-nook-seed1 | 1 | 0.00005419 | 0.00333361 | 42.66 dB |
+| maple-leaf-seed2 | 2 | 0.00002223 | 0.00199130 | 46.53 dB |
+| misty-lake-seed3 | 3 | 0.00000559 | 0.00072002 | 52.52 dB |
+
+Aggregate over the three additional cases:
+
+```text
+mean_psnr=47.24 dB
+min_psnr=42.66 dB
+max_mse=0.00005419
+```
+
+This is the first clear mixed-precision signal: one nearby up-block group has a
+K5 candidate, while this group needs K6 for safe composition.
+
 ## Next Slice
 
-1. Sweep `up_blocks.0.attentions.1` cross-attention modules.
-2. Start a production-path design note for packed key storage and a Torch/Triton
+1. Add per-module precision support to policy loading.
+2. Test one mixed policy covering both up-block groups.
+3. Start a production-path design note for packed key storage and a Torch/Triton
    attention kernel.
-3. Add a stricter stress lane after the next attention-group candidate exists.

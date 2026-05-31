@@ -147,7 +147,8 @@ not.
 
 ## Next Slice
 
-1. Sweep `up_blocks.0.attentions.1` cross-attention modules.
+1. Add per-module precision support, because the next attention group needs K6
+   while this group holds at K5.
 2. Draft the production-path design for packed K storage and a Torch/Triton
    attention kernel.
 3. Add a stricter stress lane once the next attention group has a candidate:

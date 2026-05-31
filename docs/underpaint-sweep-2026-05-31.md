@@ -227,3 +227,12 @@ A/B (`psnr=32.93 dB`). The tracked combined policy is
 `configs/underpaint-juggernaut-sdxl-up0-cross-k5-qjl128-policy.json`. The
 same combined policy cleared the three-case validation suite with
 `min_psnr=39.47 dB` and `mean_psnr=43.39 dB`.
+
+The next up-block attention group is recorded in
+`docs/up-cross-attn1-sweep-2026-05-31.md`. In
+`up_blocks.0.attentions.1`, the K5 single-module gate selected
+`79,85,87`, but the group did not compose at K5 (`psnr=25.66 dB`). The
+stricter K6 pair `79,87` cleared the 20-step compass A/B (`psnr=42.50 dB`) and
+the three-case validation suite (`min_psnr=42.66 dB`, `mean_psnr=47.24 dB`).
+The tracked policy is
+`configs/underpaint-juggernaut-sdxl-up0-attn1-cross-k6-qjl128-policy.json`.
