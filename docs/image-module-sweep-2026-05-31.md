@@ -9,7 +9,7 @@ Source checkpoint, used read-only:
 ```
 
 This sweep reuses one same-seed 8-step baseline image, installs
-`TurboDAttnProcessor` into one SDXL U-Net attention module at a time, and
+`ShmooshAttnProcessor` into one SDXL U-Net attention module at a time, and
 records per-module image deltas.
 
 The tested policy is:
@@ -22,7 +22,7 @@ Command:
 
 ```bash
 HF_HUB_DISABLE_XET=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-uv run turbo-d-image-module-sweep \
+uv run shmoosh-image-module-sweep \
   --single-file /home/lynn/.underpaint/models/checkpoints/juggernaut-x-v10/Juggernaut-X-RunDiffusion-NSFW.safetensors \
   --pipeline-class sdxl \
   --config /home/lynn/.cache/huggingface/hub/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b \

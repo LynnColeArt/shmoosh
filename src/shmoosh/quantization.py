@@ -8,7 +8,7 @@ import numpy as np
 
 @dataclass(frozen=True)
 class EncodedVectors:
-    """Compact representation produced by `TurboDCodec.encode`."""
+    """Compact representation produced by `ShmooshCodec.encode`."""
 
     indices: np.ndarray
     norms: np.ndarray
@@ -25,7 +25,7 @@ class EncodedVectors:
         return self.original_shape[-1]
 
 
-class TurboDCodec:
+class ShmooshCodec:
     """Reference TurboQuant-inspired vector codec.
 
     The implementation is intentionally simple and CPU-friendly:

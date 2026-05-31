@@ -20,7 +20,7 @@ Supporting Underpaint assets:
 - YOLO/adetailer detection assets under `/home/lynn/.underpaint/models/detail` and `/home/lynn/.underpaint/models/detection`
 - Qwen GGUF prompt-helper models under `/home/lynn/.underpaint/models/prompt`
 
-For Turbo-D's first attention experiment, use the Juggernaut checkpoint read-only through Diffusers single-file loading. Do not modify Underpaint's libraries or model store.
+For Shmoosh's first attention experiment, use the Juggernaut checkpoint read-only through Diffusers single-file loading. Do not modify Underpaint's libraries or model store.
 
 Suggested capture command:
 
@@ -45,7 +45,7 @@ The optional Diffusers dependency set pins `transformers<5`. The Quickie Video e
 Then run:
 
 ```bash
-uv run turbo-d-attention-probe \
+uv run shmoosh-attention-probe \
   --npz captures/underpaint-juggernaut/capture_000.npz \
   --bits 4 \
   --qjl-bits 128

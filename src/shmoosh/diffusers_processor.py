@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import math
 from typing import Any
 
-from turbo_d.runtime_attention import torch_turbo_d_attention
+from shmoosh.runtime_attention import torch_shmoosh_attention
 
 
 @dataclass
@@ -14,9 +14,9 @@ class DenoisingStepState:
 
 
 @dataclass(frozen=True)
-class ScheduledTurboDAttnProcessor:
+class ScheduledShmooshAttnProcessor:
     original_processor: Any
-    turbo_processor: Any
+    shmoosh_processor: Any
     step_state: DenoisingStepState
     quantize_start_step: int = 0
     quantize_end_step: int | None = None
@@ -34,7 +34,7 @@ class ScheduledTurboDAttnProcessor:
         **kwargs,
     ):
         processor = (
-            self.turbo_processor
+            self.shmoosh_processor
             if self._quantize_current_step()
             else self.original_processor or _sdpa_processor()
         )
@@ -74,8 +74,8 @@ class ScheduledTurboDAttnProcessor:
 
 
 @dataclass(frozen=True)
-class TurboDAttnProcessor:
-    """Slow Diffusers attention processor backed by the Turbo-D reference codec.
+class ShmooshAttnProcessor:
+    """Slow Diffusers attention processor backed by the Shmoosh reference codec.
 
     This processor is for behavioral experiments only. It leaves projections and
     output layers in Torch/Diffusers, but computes attention itself through the
@@ -155,7 +155,7 @@ class TurboDAttnProcessor:
         if attn.norm_k is not None:
             key = attn.norm_k(key)
 
-        hidden_states = torch_turbo_d_attention(
+        hidden_states = torch_shmoosh_attention(
             query,
             key,
             value,
@@ -190,6 +190,6 @@ def _sdpa_processor():
     try:
         from diffusers.models.attention_processor import AttnProcessor2_0
     except ImportError as exc:  # pragma: no cover
-        raise RuntimeError("diffusers is required for TurboDAttnProcessor fallback") from exc
+        raise RuntimeError("diffusers is required for ShmooshAttnProcessor fallback") from exc
 
     return AttnProcessor2_0()

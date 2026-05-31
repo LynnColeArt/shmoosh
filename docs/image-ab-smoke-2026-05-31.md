@@ -8,7 +8,7 @@ Source checkpoint, used read-only:
 /home/lynn/.underpaint/models/checkpoints/juggernaut-x-v10/Juggernaut-X-RunDiffusion-NSFW.safetensors
 ```
 
-The first image-level smoke installs `TurboDAttnProcessor` into one SDXL U-Net
+The first image-level smoke installs `ShmooshAttnProcessor` into one SDXL U-Net
 self-attention module:
 
 ```text
@@ -23,7 +23,7 @@ K3 + QJL-128 + exact V
 
 This is not a speed benchmark. The processor routes through the NumPy reference
 codec and is only meant to answer whether the same-seed generation remains
-stable when a chosen attention module uses Turbo-D key compression.
+stable when a chosen attention module uses Shmoosh key compression.
 
 ## Commands
 
@@ -31,7 +31,7 @@ Quantized-key image A/B:
 
 ```bash
 HF_HUB_DISABLE_XET=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-uv run turbo-d-image-ab-smoke \
+uv run shmoosh-image-ab-smoke \
   --single-file /home/lynn/.underpaint/models/checkpoints/juggernaut-x-v10/Juggernaut-X-RunDiffusion-NSFW.safetensors \
   --pipeline-class sdxl \
   --config /home/lynn/.cache/huggingface/hub/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b \
@@ -50,7 +50,7 @@ Exact-processor calibration:
 
 ```bash
 HF_HUB_DISABLE_XET=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-uv run turbo-d-image-ab-smoke \
+uv run shmoosh-image-ab-smoke \
   --single-file /home/lynn/.underpaint/models/checkpoints/juggernaut-x-v10/Juggernaut-X-RunDiffusion-NSFW.safetensors \
   --pipeline-class sdxl \
   --config /home/lynn/.cache/huggingface/hub/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b \
@@ -72,7 +72,7 @@ Image outputs:
 
 ```text
 captures/image-ab-juggernaut-module-008-2step/baseline.png
-captures/image-ab-juggernaut-module-008-2step/turbo.png
+captures/image-ab-juggernaut-module-008-2step/shmoosh.png
 captures/image-ab-juggernaut-module-008-2step/diff_heatmap.png
 ```
 

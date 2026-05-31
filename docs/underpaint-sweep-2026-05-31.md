@@ -44,7 +44,7 @@ The selected modules cover down, mid, and up U-Net attention blocks.
 Command:
 
 ```bash
-uv run turbo-d-sweep-captures captures/underpaint-juggernaut-sweep \
+uv run shmoosh-sweep-captures captures/underpaint-juggernaut-sweep \
   --bits 3,4 \
   --qjl-bits 0,128 \
   --codebook-samples 80000 \
@@ -52,7 +52,7 @@ uv run turbo-d-sweep-captures captures/underpaint-juggernaut-sweep \
   --json captures/underpaint-juggernaut-sweep/results.json
 ```
 
-Ratios below are `Turbo-D metric / scalar metric`; lower is better.
+Ratios below are `Shmoosh metric / scalar metric`; lower is better.
 
 | Bits | QJL Signs | Score Wins | KL Wins | Output Cos Wins | Mean Score Ratio | Mean KL Ratio |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -75,7 +75,7 @@ Split by attention kind:
 Command:
 
 ```bash
-uv run turbo-d-sweep-captures captures/underpaint-juggernaut-sweep \
+uv run shmoosh-sweep-captures captures/underpaint-juggernaut-sweep \
   --bits 3,4 \
   --qjl-bits 16,32,64,128 \
   --codebook-samples 80000 \
@@ -98,7 +98,7 @@ uv run turbo-d-sweep-captures captures/underpaint-juggernaut-sweep \
 
 The important result is not simply "rotation helps." In this fixture, the QJL residual correction is the difference between a sometimes-good codec and a consistently-good one.
 
-The lower-sign QJL settings are not useful yet. With the current estimator and scaling, 16 and 32 signs inject too much correction noise, and 64 signs is only borderline. At 128 signs, Turbo-D becomes consistently better than scalar quantization across both self-attention and cross-attention.
+The lower-sign QJL settings are not useful yet. With the current estimator and scaling, 16 and 32 signs inject too much correction noise, and 64 signs is only borderline. At 128 signs, Shmoosh becomes consistently better than scalar quantization across both self-attention and cross-attention.
 
 For 64-dimensional attention vectors, the theoretical packed storage per vector is:
 
@@ -121,11 +121,11 @@ The current NumPy implementation does not bit-pack residual signs; these are the
 
 Follow-up implementation added:
 
-- `turbo_d.runtime_attention.turbo_d_attention_output`
-- `turbo_d.diffusers_processor.TurboDAttnProcessor`
-- `turbo-d-runtime-smoke`
+- `shmoosh.runtime_attention.shmoosh_attention_output`
+- `shmoosh.diffusers_processor.ShmooshAttnProcessor`
+- `shmoosh-runtime-smoke`
 
-This is a deliberately slow behavioral path. It mirrors Diffusers `AttnProcessor2_0`, but moves post-projection Q/K/V tensors through the NumPy Turbo-D reference codec. It is useful for correctness and policy experiments, not speed.
+This is a deliberately slow behavioral path. It mirrors Diffusers `AttnProcessor2_0`, but moves post-projection Q/K/V tensors through the NumPy Shmoosh reference codec. It is useful for correctness and policy experiments, not speed.
 
 Smoke results on representative captures:
 
@@ -155,7 +155,7 @@ The cross-attention raw cosine value is misleading because half the rows in that
 Runtime-style policy command:
 
 ```bash
-uv run turbo-d-policy-sweep captures/underpaint-juggernaut-sweep \
+uv run shmoosh-policy-sweep captures/underpaint-juggernaut-sweep \
   --policies k_only,v_only,kv \
   --bits 3 \
   --qjl-bits 128 \

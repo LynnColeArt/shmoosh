@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from argparse import Namespace
 
-from turbo_d.cli.image_ab_smoke import (
+from shmoosh.cli.image_ab_smoke import (
     _policy_processor_metadata,
     _processor_config,
     _select_policy_module_entries,
     _select_policy_modules,
 )
-from turbo_d.cli.image_policy_suite import _cases_from_payload
-from turbo_d.diffusers_processor import DenoisingStepState, ScheduledTurboDAttnProcessor
+from shmoosh.cli.image_policy_suite import _cases_from_payload
+from shmoosh.diffusers_processor import DenoisingStepState, ScheduledShmooshAttnProcessor
 
 
 class _FakeProcessor:
@@ -50,7 +50,7 @@ def test_policy_processor_config_overrides_cli_defaults() -> None:
         steps=20,
     )
     policy = {
-        "turbo_policy": {
+        "shmoosh_policy": {
             "bits": 3,
             "qjl_bits": 128,
             "processor_seed": 11,
@@ -87,7 +87,7 @@ def test_module_policy_can_override_processor_config() -> None:
         steps=20,
     )
     policy = {
-        "turbo_policy": {
+        "shmoosh_policy": {
             "bits": 5,
             "qjl_bits": 128,
             "processor_seed": 11,
@@ -100,7 +100,7 @@ def test_module_policy_can_override_processor_config() -> None:
     }
     module_entry = {
         "bits": 6,
-        "turbo_policy": {
+        "shmoosh_policy": {
             "qjl_bits": 256,
         },
     }
@@ -136,7 +136,7 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
         ("b.attn2", second),
     ]
     policy = {
-        "turbo_policy": {
+        "shmoosh_policy": {
             "bits": 5,
             "qjl_bits": 128,
             "processor_seed": 11,
@@ -170,9 +170,9 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
 
 def test_scheduled_processor_dispatches_by_step_window() -> None:
     step_state = DenoisingStepState(current_step=0, total_steps=20)
-    processor = ScheduledTurboDAttnProcessor(
+    processor = ScheduledShmooshAttnProcessor(
         original_processor=_FakeProcessor("exact"),
-        turbo_processor=_FakeProcessor("turbo"),
+        shmoosh_processor=_FakeProcessor("shmoosh"),
         step_state=step_state,
         quantize_start_step=4,
         quantize_end_step=10,
@@ -180,18 +180,18 @@ def test_scheduled_processor_dispatches_by_step_window() -> None:
 
     assert processor(None, None) == "exact"
     step_state.current_step = 4
-    assert processor(None, None) == "turbo"
+    assert processor(None, None) == "shmoosh"
     step_state.current_step = 9
-    assert processor(None, None) == "turbo"
+    assert processor(None, None) == "shmoosh"
     step_state.current_step = 10
     assert processor(None, None) == "exact"
 
 
 def test_scheduled_processor_resolves_percent_window() -> None:
     step_state = DenoisingStepState(current_step=5, total_steps=30)
-    processor = ScheduledTurboDAttnProcessor(
+    processor = ScheduledShmooshAttnProcessor(
         original_processor=_FakeProcessor("exact"),
-        turbo_processor=_FakeProcessor("turbo"),
+        shmoosh_processor=_FakeProcessor("shmoosh"),
         step_state=step_state,
         quantize_start_percent=0.2,
         quantize_end_percent=0.5,
@@ -199,9 +199,9 @@ def test_scheduled_processor_resolves_percent_window() -> None:
 
     assert processor(None, None) == "exact"
     step_state.current_step = 6
-    assert processor(None, None) == "turbo"
+    assert processor(None, None) == "shmoosh"
     step_state.current_step = 14
-    assert processor(None, None) == "turbo"
+    assert processor(None, None) == "shmoosh"
     step_state.current_step = 15
     assert processor(None, None) == "exact"
 

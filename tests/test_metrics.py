@@ -1,6 +1,6 @@
 import numpy as np
 
-from turbo_d.metrics import attention_metrics, cosine_error, mse, softmax_kl
+from shmoosh.metrics import attention_metrics, cosine_error, mse, softmax_kl
 
 
 def test_basic_metrics_are_zero_for_identical_inputs() -> None:

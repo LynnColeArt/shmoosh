@@ -202,9 +202,9 @@ def _module_config(policy: dict[str, Any], entry: dict[str, Any]) -> dict[str, A
         "qjl_bits": 128,
         "quantize_keys": True,
     }
-    _apply_overrides(config, policy.get("turbo_policy", {}))
+    _apply_overrides(config, policy.get("shmoosh_policy", {}))
     _apply_overrides(config, entry)
-    _apply_overrides(config, entry.get("turbo_policy", {}))
+    _apply_overrides(config, entry.get("shmoosh_policy", {}))
     return config
 
 

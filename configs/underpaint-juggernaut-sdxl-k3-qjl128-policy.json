@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "First-pass Turbo-D candidate policy for the local Underpaint Juggernaut SDXL checkpoint.",
+  "description": "First-pass Shmoosh candidate policy for the local Underpaint Juggernaut SDXL checkpoint.",
   "source": "docs/image-module-sweep-2026-05-31.md",
   "validation": {
     "accepted_horizon_steps": 12,
@@ -15,7 +15,7 @@
     "quantize_keys": false,
     "quantize_values": false
   },
-  "turbo_policy": {
+  "shmoosh_policy": {
     "bits": 3,
     "key_bits": null,
     "value_bits": null,

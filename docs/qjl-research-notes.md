@@ -26,7 +26,7 @@ The variance story explains our empirical threshold:
 
 ## Design Implication
 
-Turbo-D should not treat QJL as a tiny optional add-on. For attention logits, QJL needs enough sketch width to reduce variance below softmax sensitivity. The current prototype should use QJL-128 as the baseline and investigate better scaling, orthogonalized projections, or calibrated shrinkage before trying to reduce sketch width.
+Shmoosh should not treat QJL as a tiny optional add-on. For attention logits, QJL needs enough sketch width to reduce variance below softmax sensitivity. The current prototype should use QJL-128 as the baseline and investigate better scaling, orthogonalized projections, or calibrated shrinkage before trying to reduce sketch width.
 
 ## Open Research Questions
 

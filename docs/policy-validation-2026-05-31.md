@@ -14,7 +14,7 @@ Command:
 
 ```bash
 HF_HUB_DISABLE_XET=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-uv run turbo-d-image-policy-suite \
+uv run shmoosh-image-policy-suite \
   --single-file /home/lynn/.underpaint/models/checkpoints/juggernaut-x-v10/Juggernaut-X-RunDiffusion-NSFW.safetensors \
   --pipeline-class sdxl \
   --config /home/lynn/.cache/huggingface/hub/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b \
@@ -29,7 +29,7 @@ uv run turbo-d-image-policy-suite \
 ```
 
 The suite loads the pipeline once, runs each case as an exact baseline, then
-installs the policy processor for a same-seed Turbo-D run. Outputs are written
+installs the policy processor for a same-seed Shmoosh run. Outputs are written
 per case, with aggregate summaries here:
 
 ```text

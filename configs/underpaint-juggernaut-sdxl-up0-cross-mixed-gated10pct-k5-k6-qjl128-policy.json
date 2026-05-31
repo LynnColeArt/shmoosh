@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Percentage-timestep-gated mixed K5/K6 Turbo-D policy with exact-first 10% activation for selected up_blocks.0 cross-attention modules in the local Underpaint Juggernaut SDXL checkpoint.",
+  "description": "Percentage-timestep-gated mixed K5/K6 Shmoosh policy with exact-first 10% activation for selected up_blocks.0 cross-attention modules in the local Underpaint Juggernaut SDXL checkpoint.",
   "source": "docs/1024-policy-validation-2026-05-31.md",
   "validation": {
     "quantize_start_percent": 0.1,
@@ -17,7 +17,7 @@
     "quantize_keys": false,
     "quantize_values": false
   },
-  "turbo_policy": {
+  "shmoosh_policy": {
     "bits": 5,
     "key_bits": null,
     "value_bits": null,

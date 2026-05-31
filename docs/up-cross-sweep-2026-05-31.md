@@ -19,7 +19,7 @@ Command:
 
 ```bash
 HF_HUB_DISABLE_XET=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-uv run turbo-d-image-module-sweep \
+uv run shmoosh-image-module-sweep \
   --single-file /home/lynn/.underpaint/models/checkpoints/juggernaut-x-v10/Juggernaut-X-RunDiffusion-NSFW.safetensors \
   --pipeline-class sdxl \
   --config /home/lynn/.cache/huggingface/hub/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b \
@@ -68,7 +68,7 @@ Combined A/B command:
 
 ```bash
 HF_HUB_DISABLE_XET=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-uv run turbo-d-image-ab-smoke \
+uv run shmoosh-image-ab-smoke \
   --single-file /home/lynn/.underpaint/models/checkpoints/juggernaut-x-v10/Juggernaut-X-RunDiffusion-NSFW.safetensors \
   --pipeline-class sdxl \
   --config /home/lynn/.cache/huggingface/hub/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b \
@@ -106,7 +106,7 @@ suite used for the single-module K5 policy:
 
 ```bash
 HF_HUB_DISABLE_XET=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-uv run turbo-d-image-policy-suite \
+uv run shmoosh-image-policy-suite \
   --single-file /home/lynn/.underpaint/models/checkpoints/juggernaut-x-v10/Juggernaut-X-RunDiffusion-NSFW.safetensors \
   --pipeline-class sdxl \
   --config /home/lynn/.cache/huggingface/hub/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b \
@@ -136,7 +136,7 @@ max_mse=0.00011296
 
 ## Interpretation
 
-This is the first evidence that Turbo-D can cover multiple SDXL attention
+This is the first evidence that Shmoosh can cover multiple SDXL attention
 modules in one image run without visible collapse. It is still narrow evidence:
 four prompt/seed pairs, 512px, 20 denoising steps, and only one U-Net up-block
 attention group.

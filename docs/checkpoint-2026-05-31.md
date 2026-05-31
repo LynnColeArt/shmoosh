@@ -4,7 +4,7 @@
 
 - Empty workspace converted into a small research repo.
 - NumPy reference implementation of a TurboQuant-inspired diffusion attention codec.
-- Synthetic attention probe comparing Turbo-D against plain scalar quantization.
+- Synthetic attention probe comparing Shmoosh against plain scalar quantization.
 - Optional Diffusers capture script for real Q/K/V tensor fixtures.
 - Unit tests for codec behavior and metrics.
 
@@ -26,7 +26,7 @@ Commands run:
 uv sync --extra dev
 uv run python -m compileall -q src experiments tests
 uv run pytest
-uv run turbo-d-attention-probe --tokens 128 --dim 64 --heads 4 --bits 3 --qjl-bits 64 --seed 11
+uv run shmoosh-attention-probe --tokens 128 --dim 64 --heads 4 --bits 3 --qjl-bits 64 --seed 11
 ```
 
 Test result:
@@ -38,7 +38,7 @@ Test result:
 Synthetic 3-bit attention probe:
 
 ```text
-turbo_d: score_mse=0.0643849 softmax_kl=0.0322994 output_cosine_error=0.0477741 output_mse=0.00323452
+shmoosh: score_mse=0.0643849 softmax_kl=0.0322994 output_cosine_error=0.0477741 output_mse=0.00323452
 scalar:  score_mse=0.103598  softmax_kl=0.0571544 output_cosine_error=0.0976257 output_mse=0.00873431
 ```
 
@@ -74,7 +74,7 @@ module: down_blocks.1.attentions.0.transformer_blocks.0.attn1
 Real captured attention, 4-bit probe:
 
 ```text
-turbo_d: score_mse=0.0183694 softmax_kl=0.00903013 output_cosine_error=0.000531458 output_mse=0.000145862
+shmoosh: score_mse=0.0183694 softmax_kl=0.00903013 output_cosine_error=0.000531458 output_mse=0.000145862
 scalar:  score_mse=0.0235968 softmax_kl=0.0117142  output_cosine_error=0.000606888 output_mse=0.000155691
 ```
 
@@ -82,7 +82,7 @@ scalar:  score_mse=0.0235968 softmax_kl=0.0117142  output_cosine_error=0.0006068
 
 This is not evidence of diffusion image quality yet. It is evidence that the first reference codec is wired correctly enough to test, and on a seeded synthetic attention workload with outliers and timestep-like drift, the geometric codec preserves attention behavior better than a plain scalar quantizer at the same nominal bit width.
 
-The first real Underpaint-derived SDXL tensor shows the same direction as the synthetic probe: Turbo-D preserved attention behavior better than plain scalar quantization at the same nominal bit width. This is still a single block and a single denoising step, so the next step is a multi-layer and multi-timestep capture.
+The first real Underpaint-derived SDXL tensor shows the same direction as the synthetic probe: Shmoosh preserved attention behavior better than plain scalar quantization at the same nominal bit width. This is still a single block and a single denoising step, so the next step is a multi-layer and multi-timestep capture.
 
 ## Multi-Block Sweep
 
@@ -99,4 +99,4 @@ The sweep also showed that smaller QJL corrections are not currently viable: 16 
 
 ## Compatibility Note
 
-The Quickie Video environment was inspected but not modified. Its `diffusers 0.38.0` plus `transformers 5.9.0` stack failed SDXL single-file conversion because Diffusers expected the older `CLIPTextModel.text_model` wrapper shape. Turbo-D now installs its own isolated optional stack with `diffusers 0.37.1` and `transformers 4.57.6`, which successfully loaded the Underpaint checkpoint.
+The Quickie Video environment was inspected but not modified. Its `diffusers 0.38.0` plus `transformers 5.9.0` stack failed SDXL single-file conversion because Diffusers expected the older `CLIPTextModel.text_model` wrapper shape. Shmoosh now installs its own isolated optional stack with `diffusers 0.37.1` and `transformers 4.57.6`, which successfully loaded the Underpaint checkpoint.

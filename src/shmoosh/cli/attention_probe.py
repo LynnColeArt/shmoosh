@@ -5,12 +5,12 @@ from dataclasses import asdict
 
 import numpy as np
 
-from turbo_d.probe import load_npz_tensors, run_attention_probe
+from shmoosh.probe import load_npz_tensors, run_attention_probe
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Probe Turbo-D attention preservation on synthetic or captured tensors."
+        description="Probe Shmoosh attention preservation on synthetic or captured tensors."
     )
     parser.add_argument("--npz", help="Optional .npz file containing q, k, and v arrays.")
     parser.add_argument("--tokens", type=int, default=256)
@@ -35,14 +35,14 @@ def main() -> None:
         codebook_samples=args.codebook_samples,
     )
 
-    print("Turbo-D attention probe")
+    print("Shmoosh attention probe")
     print(
         f"shape: heads={q.shape[0]} q_tokens={q.shape[1]} "
         f"k_tokens={k.shape[1]} dim={q.shape[2]}"
     )
     print(f"bits={args.bits} qjl_bits={args.qjl_bits} seed={args.seed}")
     print("")
-    _print_metrics("turbo_d", result.turbo_d)
+    _print_metrics("shmoosh", result.shmoosh)
     _print_metrics("scalar", result.scalar)
 
 

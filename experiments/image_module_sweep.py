@@ -1,4 +1,4 @@
-from turbo_d.cli.image_module_sweep import main
+from shmoosh.cli.image_module_sweep import main
 
 
 if __name__ == "__main__":

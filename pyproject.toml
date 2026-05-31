@@ -1,5 +1,5 @@
 [project]
-name = "turbo-d"
+name = "shmoosh"
 version = "0.1.0"
 description = "Research prototypes for TurboQuant-style quantization in diffusion attention workflows."
 readme = "README.md"
@@ -22,21 +22,21 @@ dev = [
 ]
 
 [project.scripts]
-turbo-d-attention-probe = "turbo_d.cli.attention_probe:main"
-turbo-d-policy-sweep = "turbo_d.cli.policy_sweep:main"
-turbo-d-sweep-captures = "turbo_d.cli.sweep_captures:main"
-turbo-d-runtime-smoke = "turbo_d.cli.runtime_smoke:main"
-turbo-d-image-ab-smoke = "turbo_d.cli.image_ab_smoke:main"
-turbo-d-image-module-sweep = "turbo_d.cli.image_module_sweep:main"
-turbo-d-image-policy-suite = "turbo_d.cli.image_policy_suite:main"
-turbo-d-packed-policy-estimate = "turbo_d.cli.packed_policy_estimate:main"
+shmoosh-attention-probe = "shmoosh.cli.attention_probe:main"
+shmoosh-policy-sweep = "shmoosh.cli.policy_sweep:main"
+shmoosh-sweep-captures = "shmoosh.cli.sweep_captures:main"
+shmoosh-runtime-smoke = "shmoosh.cli.runtime_smoke:main"
+shmoosh-image-ab-smoke = "shmoosh.cli.image_ab_smoke:main"
+shmoosh-image-module-sweep = "shmoosh.cli.image_module_sweep:main"
+shmoosh-image-policy-suite = "shmoosh.cli.image_policy_suite:main"
+shmoosh-packed-policy-estimate = "shmoosh.cli.packed_policy_estimate:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/turbo_d"]
+packages = ["src/shmoosh"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

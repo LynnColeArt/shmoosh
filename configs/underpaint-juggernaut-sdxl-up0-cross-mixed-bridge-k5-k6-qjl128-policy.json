@@ -29,7 +29,7 @@
     "quantize_keys": false,
     "quantize_values": false
   },
-  "turbo_policy": {
+  "shmoosh_policy": {
     "bits": 5,
     "key_bits": null,
     "value_bits": null,

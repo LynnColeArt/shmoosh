@@ -18,7 +18,7 @@ Diffusion quantization papers repeatedly identify two failure modes that do not 
 - activation distributions vary strongly over denoising timesteps;
 - errors accumulate through the sampling trajectory, so local tensor error is not the whole story.
 
-For that reason, Turbo-D should not be a single global bit-width. It should become a policy:
+For that reason, Shmoosh should not be a single global bit-width. It should become a policy:
 
 - bits by timestep;
 - bits by layer/block/head;
@@ -39,7 +39,7 @@ For that reason, Turbo-D should not be a single global bit-width. It should beco
 
 The first test should not be end-to-end image quality. It should be the smaller mechanistic question:
 
-> Given Q, K, and V tensors from diffusion attention at specific layers and timesteps, does Turbo-D preserve attention scores and outputs better than simple INT4/FP8-style baselines at the same or lower effective bit budget?
+> Given Q, K, and V tensors from diffusion attention at specific layers and timesteps, does Shmoosh preserve attention scores and outputs better than simple INT4/FP8-style baselines at the same or lower effective bit budget?
 
 Useful early metrics:
 

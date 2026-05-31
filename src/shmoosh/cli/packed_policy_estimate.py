@@ -4,12 +4,12 @@ import argparse
 import json
 from pathlib import Path
 
-from turbo_d.packed_estimator import PackedKeyAssumptions, estimate_policy_storage
+from shmoosh.packed_estimator import PackedKeyAssumptions, estimate_policy_storage
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Estimate packed-key storage savings for a Turbo-D image policy."
+        description="Estimate packed-key storage savings for a Shmoosh image policy."
     )
     parser.add_argument("--policy-file", required=True)
     parser.add_argument(

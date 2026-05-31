@@ -1,7 +1,7 @@
 import numpy as np
 
-from turbo_d.metrics import cosine_error, mse
-from turbo_d.runtime_attention import exact_attention_output, turbo_d_attention_output
+from shmoosh.metrics import cosine_error, mse
+from shmoosh.runtime_attention import exact_attention_output, shmoosh_attention_output
 
 
 def test_runtime_attention_shape() -> None:
@@ -10,7 +10,7 @@ def test_runtime_attention_shape() -> None:
     k = rng.normal(size=(3, 5, 16)).astype(np.float32)
     v = rng.normal(size=(3, 5, 16)).astype(np.float32)
 
-    output = turbo_d_attention_output(
+    output = shmoosh_attention_output(
         q,
         k,
         v,
@@ -31,7 +31,7 @@ def test_runtime_attention_more_bits_reduce_output_error() -> None:
     v = rng.normal(size=(2, 12, 32)).astype(np.float32)
     reference = exact_attention_output(q, k, v)
 
-    output_3 = turbo_d_attention_output(
+    output_3 = shmoosh_attention_output(
         q,
         k,
         v,
@@ -40,7 +40,7 @@ def test_runtime_attention_more_bits_reduce_output_error() -> None:
         seed=1,
         codebook_samples=10_000,
     )
-    output_5 = turbo_d_attention_output(
+    output_5 = shmoosh_attention_output(
         q,
         k,
         v,
@@ -61,7 +61,7 @@ def test_runtime_attention_can_keep_values_exact() -> None:
     v = rng.normal(size=(2, 6, 16)).astype(np.float32)
     reference = exact_attention_output(q, k, v)
 
-    quantized_values = turbo_d_attention_output(
+    quantized_values = shmoosh_attention_output(
         q,
         k,
         v,
@@ -71,7 +71,7 @@ def test_runtime_attention_can_keep_values_exact() -> None:
         quantize_values=True,
         codebook_samples=10_000,
     )
-    exact_values = turbo_d_attention_output(
+    exact_values = shmoosh_attention_output(
         q,
         k,
         v,
@@ -92,7 +92,7 @@ def test_runtime_attention_can_keep_keys_exact() -> None:
     v = rng.normal(size=(2, 6, 16)).astype(np.float32)
     reference = exact_attention_output(q, k, v)
 
-    output = turbo_d_attention_output(
+    output = shmoosh_attention_output(
         q,
         k,
         v,
@@ -114,7 +114,7 @@ def test_runtime_attention_accepts_split_bit_widths() -> None:
     k = rng.normal(size=(2, 6, 16)).astype(np.float32)
     v = rng.normal(size=(2, 6, 16)).astype(np.float32)
 
-    output = turbo_d_attention_output(
+    output = shmoosh_attention_output(
         q,
         k,
         v,

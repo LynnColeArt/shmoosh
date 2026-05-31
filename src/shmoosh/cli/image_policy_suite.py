@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from turbo_d.cli.image_ab_smoke import (
+from shmoosh.cli.image_ab_smoke import (
     _image_metrics,
     _install_processor,
     _install_policy_processors,
@@ -25,12 +25,12 @@ from turbo_d.cli.image_ab_smoke import (
     _set_progress_bar,
     _write_diff_heatmap,
 )
-from turbo_d.diffusers_processor import DenoisingStepState
+from shmoosh.diffusers_processor import DenoisingStepState
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Validate a Turbo-D image policy across prompt/seed cases."
+        description="Validate a Shmoosh image policy across prompt/seed cases."
     )
     parser.add_argument("--model-id")
     parser.add_argument("--single-file")
@@ -188,23 +188,23 @@ def _run_case(
     _install_policy_processors(
         policy_selection, args=args, policy=policy, step_state=step_state
     )
-    turbo_image, turbo_stats = _run_image(
+    shmoosh_image, shmoosh_stats = _run_image(
         pipe,
         torch=torch,
         args=case,
         common_kwargs=common_kwargs,
-        label=f"{case.case_id}:turbo",
+        label=f"{case.case_id}:shmoosh",
         step_state=step_state,
     )
 
     baseline_path = case_dir / "baseline.png"
-    turbo_path = case_dir / "turbo.png"
+    shmoosh_path = case_dir / "shmoosh.png"
     diff_path = case_dir / "diff_heatmap.png"
     metrics_path = case_dir / "metrics.json"
     baseline_image.save(baseline_path)
-    turbo_image.save(turbo_path)
-    image_metrics = _image_metrics(baseline_image, turbo_image)
-    _write_diff_heatmap(baseline_image, turbo_image, diff_path)
+    shmoosh_image.save(shmoosh_path)
+    image_metrics = _image_metrics(baseline_image, shmoosh_image)
+    _write_diff_heatmap(baseline_image, shmoosh_image, diff_path)
 
     row = {
         "case_id": case.case_id,
@@ -220,17 +220,17 @@ def _run_case(
         "psnr_db": image_metrics["psnr_db"],
         "max_abs": image_metrics["max_abs"],
         "baseline_seconds": baseline_stats["seconds"],
-        "turbo_seconds": turbo_stats["seconds"],
+        "shmoosh_seconds": shmoosh_stats["seconds"],
         "baseline_image": str(baseline_path),
-        "turbo_image": str(turbo_path),
+        "shmoosh_image": str(shmoosh_path),
         "diff_heatmap": str(diff_path),
         "metrics": str(metrics_path),
     }
-    if "cuda_max_memory_allocated_mib" in turbo_stats:
-        row["turbo_cuda_max_memory_allocated_mib"] = turbo_stats[
+    if "cuda_max_memory_allocated_mib" in shmoosh_stats:
+        row["shmoosh_cuda_max_memory_allocated_mib"] = shmoosh_stats[
             "cuda_max_memory_allocated_mib"
         ]
-        row["turbo_cuda_max_memory_reserved_mib"] = turbo_stats[
+        row["shmoosh_cuda_max_memory_reserved_mib"] = shmoosh_stats[
             "cuda_max_memory_reserved_mib"
         ]
 
@@ -240,11 +240,11 @@ def _run_case(
         "processor": processor_metadata,
         "policy": policy,
         "baseline": baseline_stats,
-        "turbo": turbo_stats,
+        "shmoosh": shmoosh_stats,
         "image_metrics": image_metrics,
         "outputs": {
             "baseline": str(baseline_path),
-            "turbo": str(turbo_path),
+            "shmoosh": str(shmoosh_path),
             "diff_heatmap": str(diff_path),
         },
     }
@@ -364,11 +364,11 @@ def _write_summary(
         "psnr_db",
         "max_abs",
         "baseline_seconds",
-        "turbo_seconds",
-        "turbo_cuda_max_memory_allocated_mib",
-        "turbo_cuda_max_memory_reserved_mib",
+        "shmoosh_seconds",
+        "shmoosh_cuda_max_memory_allocated_mib",
+        "shmoosh_cuda_max_memory_reserved_mib",
         "baseline_image",
-        "turbo_image",
+        "shmoosh_image",
         "diff_heatmap",
         "metrics",
     ]

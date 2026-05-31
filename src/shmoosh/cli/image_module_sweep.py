@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from turbo_d.cli.image_ab_smoke import (
+from shmoosh.cli.image_ab_smoke import (
     _image_metrics,
     _install_processor,
     _list_attention_modules,
@@ -22,12 +22,12 @@ from turbo_d.cli.image_ab_smoke import (
     _set_progress_bar,
     _write_diff_heatmap,
 )
-from turbo_d.diffusers_processor import TurboDAttnProcessor
+from shmoosh.diffusers_processor import ShmooshAttnProcessor
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Sweep same-seed Turbo-D image A/B results across attention modules."
+        description="Sweep same-seed Shmoosh image A/B results across attention modules."
     )
     parser.add_argument("--model-id")
     parser.add_argument("--single-file")
@@ -158,7 +158,7 @@ def main() -> None:
                         module=module,
                         module_index=module_index,
                         policy_name="exact_processor",
-                        processor=TurboDAttnProcessor(
+                        processor=ShmooshAttnProcessor(
                             bits=args.bits,
                             qjl_bits=args.qjl_bits,
                             seed=args.processor_seed,
@@ -185,8 +185,8 @@ def main() -> None:
                     module_name=module_name,
                     module=module,
                     module_index=module_index,
-                    policy_name="turbo",
-                    processor=TurboDAttnProcessor(
+                    policy_name="shmoosh",
+                    processor=ShmooshAttnProcessor(
                         bits=args.bits,
                         qjl_bits=args.qjl_bits,
                         seed=args.processor_seed,
@@ -249,13 +249,13 @@ def _run_module_policy(
     module: Any,
     module_index: int,
     policy_name: str,
-    processor: TurboDAttnProcessor,
+    processor: ShmooshAttnProcessor,
 ) -> dict[str, Any]:
     module_dir = output_dir / _module_dirname(module_index, module_name, policy_name)
     module_dir.mkdir(parents=True, exist_ok=True)
     _install_processor([(module_name, module)], processor)
 
-    turbo_image, turbo_stats = _run_image(
+    shmoosh_image, shmoosh_stats = _run_image(
         pipe,
         torch=torch,
         args=args,
@@ -263,12 +263,12 @@ def _run_module_policy(
         label=f"{policy_name}:{module_index:03d}",
     )
 
-    turbo_path = module_dir / "turbo.png"
+    shmoosh_path = module_dir / "shmoosh.png"
     diff_path = module_dir / "diff_heatmap.png"
     metrics_path = module_dir / "metrics.json"
-    turbo_image.save(turbo_path)
-    image_metrics = _image_metrics(baseline_image, turbo_image)
-    _write_diff_heatmap(baseline_image, turbo_image, diff_path)
+    shmoosh_image.save(shmoosh_path)
+    image_metrics = _image_metrics(baseline_image, shmoosh_image)
+    _write_diff_heatmap(baseline_image, shmoosh_image, diff_path)
 
     module_meta = _module_metadata(all_modules, [(module_name, module)])[0]
     row = {
@@ -289,16 +289,16 @@ def _run_module_policy(
         "psnr_db": image_metrics["psnr_db"],
         "max_abs": image_metrics["max_abs"],
         "baseline_seconds": baseline_stats["seconds"],
-        "turbo_seconds": turbo_stats["seconds"],
-        "turbo_image": str(turbo_path),
+        "shmoosh_seconds": shmoosh_stats["seconds"],
+        "shmoosh_image": str(shmoosh_path),
         "diff_heatmap": str(diff_path),
         "metrics": str(metrics_path),
     }
-    if "cuda_max_memory_allocated_mib" in turbo_stats:
-        row["turbo_cuda_max_memory_allocated_mib"] = turbo_stats[
+    if "cuda_max_memory_allocated_mib" in shmoosh_stats:
+        row["shmoosh_cuda_max_memory_allocated_mib"] = shmoosh_stats[
             "cuda_max_memory_allocated_mib"
         ]
-        row["turbo_cuda_max_memory_reserved_mib"] = turbo_stats[
+        row["shmoosh_cuda_max_memory_reserved_mib"] = shmoosh_stats[
             "cuda_max_memory_reserved_mib"
         ]
 
@@ -316,10 +316,10 @@ def _run_module_policy(
             "quantize_values": processor.quantize_values,
         },
         "baseline": baseline_stats,
-        "turbo": turbo_stats,
+        "shmoosh": shmoosh_stats,
         "image_metrics": image_metrics,
         "outputs": {
-            "turbo": str(turbo_path),
+            "shmoosh": str(shmoosh_path),
             "diff_heatmap": str(diff_path),
         },
     }
@@ -340,15 +340,15 @@ def _module_dirname(index: int, name: str, policy: str) -> str:
 
 
 def _suggest_policy(args: argparse.Namespace, rows: list[dict[str, Any]]) -> dict[str, Any]:
-    turbo_rows = [row for row in rows if row["policy"] == "turbo"]
+    shmoosh_rows = [row for row in rows if row["policy"] == "shmoosh"]
     candidates = [
         row
-        for row in turbo_rows
+        for row in shmoosh_rows
         if float(row["psnr_db"]) >= args.candidate_psnr_db
     ]
     exact = [
         row
-        for row in turbo_rows
+        for row in shmoosh_rows
         if float(row["psnr_db"]) < args.candidate_psnr_db
     ]
     return {
@@ -361,7 +361,7 @@ def _suggest_policy(args: argparse.Namespace, rows: list[dict[str, Any]]) -> dic
             "quantize_keys": False,
             "quantize_values": False,
         },
-        "turbo_policy": {
+        "shmoosh_policy": {
             "bits": args.bits,
             "key_bits": args.key_bits,
             "value_bits": args.value_bits,
@@ -418,10 +418,10 @@ def _write_summary(
         "psnr_db",
         "max_abs",
         "baseline_seconds",
-        "turbo_seconds",
-        "turbo_cuda_max_memory_allocated_mib",
-        "turbo_cuda_max_memory_reserved_mib",
-        "turbo_image",
+        "shmoosh_seconds",
+        "shmoosh_cuda_max_memory_allocated_mib",
+        "shmoosh_cuda_max_memory_reserved_mib",
+        "shmoosh_image",
         "diff_heatmap",
         "metrics",
     ]

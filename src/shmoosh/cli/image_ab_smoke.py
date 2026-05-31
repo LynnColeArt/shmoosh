@@ -9,16 +9,16 @@ from typing import Any
 
 import numpy as np
 
-from turbo_d.diffusers_processor import (
+from shmoosh.diffusers_processor import (
     DenoisingStepState,
-    ScheduledTurboDAttnProcessor,
-    TurboDAttnProcessor,
+    ScheduledShmooshAttnProcessor,
+    ShmooshAttnProcessor,
 )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Run a same-seed baseline vs Turbo-D Diffusers image smoke test."
+        description="Run a same-seed baseline vs Shmoosh Diffusers image smoke test."
     )
     parser.add_argument("--model-id")
     parser.add_argument("--single-file")
@@ -36,7 +36,7 @@ def main() -> None:
     parser.add_argument("--output-dir", default="captures/image-ab-smoke")
     parser.add_argument(
         "--policy-file",
-        help="Optional JSON policy file with quantized_modules and turbo_policy.",
+        help="Optional JSON policy file with quantized_modules and shmoosh_policy.",
     )
     parser.add_argument("--component", choices=["auto", "transformer", "unet"], default="auto")
     parser.add_argument("--module-filter", default="")
@@ -135,28 +135,28 @@ def main() -> None:
         )
     else:
         processor_config = _processor_config(args, policy=policy)
-        processor = TurboDAttnProcessor(**processor_config)
+        processor = ShmooshAttnProcessor(**processor_config)
         _install_processor(modules, processor)
         processor_metadata = _processor_metadata(processor_config)
 
-    turbo_image, turbo_stats = _run_image(
+    shmoosh_image, shmoosh_stats = _run_image(
         pipe,
         torch=torch,
         args=args,
         common_kwargs=common_kwargs,
-        label="turbo",
+        label="shmoosh",
         step_state=step_state,
     )
 
     baseline_path = output_dir / "baseline.png"
-    turbo_path = output_dir / "turbo.png"
+    shmoosh_path = output_dir / "shmoosh.png"
     diff_path = output_dir / "diff_heatmap.png"
     metrics_path = output_dir / "metrics.json"
 
     baseline_image.save(baseline_path)
-    turbo_image.save(turbo_path)
-    image_metrics = _image_metrics(baseline_image, turbo_image)
-    _write_diff_heatmap(baseline_image, turbo_image, diff_path)
+    shmoosh_image.save(shmoosh_path)
+    image_metrics = _image_metrics(baseline_image, shmoosh_image)
+    _write_diff_heatmap(baseline_image, shmoosh_image, diff_path)
 
     metrics = {
         "model_id": args.model_id,
@@ -177,18 +177,18 @@ def main() -> None:
         "processor": processor_metadata,
         "policy": policy,
         "baseline": baseline_stats,
-        "turbo": turbo_stats,
+        "shmoosh": shmoosh_stats,
         "image_metrics": image_metrics,
         "outputs": {
             "baseline": str(baseline_path),
-            "turbo": str(turbo_path),
+            "shmoosh": str(shmoosh_path),
             "diff_heatmap": str(diff_path),
         },
     }
     metrics_path.write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
 
     print(f"wrote baseline image: {baseline_path}")
-    print(f"wrote turbo image: {turbo_path}")
+    print(f"wrote shmoosh image: {shmoosh_path}")
     print(f"wrote diff heatmap: {diff_path}")
     print(f"wrote metrics: {metrics_path}")
     print(
@@ -385,10 +385,10 @@ def _processor_config(
     if policy is None:
         return config
 
-    _apply_processor_overrides(config, policy.get("turbo_policy", {}))
+    _apply_processor_overrides(config, policy.get("shmoosh_policy", {}))
     if module_entry is not None:
         _apply_processor_overrides(config, module_entry)
-        _apply_processor_overrides(config, module_entry.get("turbo_policy", {}))
+        _apply_processor_overrides(config, module_entry.get("shmoosh_policy", {}))
     return config
 
 
@@ -418,14 +418,14 @@ def _install_policy_processors(
 ) -> None:
     for name, module, entry in selection:
         config = _processor_config(args, policy=policy, module_entry=entry)
-        processor = TurboDAttnProcessor(**config)
+        processor = ShmooshAttnProcessor(**config)
         window = _module_window_config(entry)
         if _uses_scheduled_window(window):
             if step_state is None:
                 raise RuntimeError("scheduled policy processors require step_state")
-            processor = ScheduledTurboDAttnProcessor(
+            processor = ScheduledShmooshAttnProcessor(
                 original_processor=getattr(module, "processor", None),
-                turbo_processor=processor,
+                shmoosh_processor=processor,
                 step_state=step_state,
                 quantize_start_step=window["quantize_start_step"],
                 quantize_end_step=window["quantize_end_step"],
@@ -685,10 +685,10 @@ def _install_processor(modules: list[tuple[str, Any]], processor: Any) -> None:
             module.processor = processor
 
 
-def _image_metrics(baseline_image: Any, turbo_image: Any) -> dict[str, float]:
+def _image_metrics(baseline_image: Any, shmoosh_image: Any) -> dict[str, float]:
     baseline = _image_array(baseline_image)
-    turbo = _image_array(turbo_image)
-    diff = turbo - baseline
+    shmoosh = _image_array(shmoosh_image)
+    diff = shmoosh - baseline
     mse = float(np.mean(diff**2))
     rmse = math.sqrt(mse)
     max_abs = float(np.max(np.abs(diff)))
@@ -708,12 +708,12 @@ def _image_array(image: Any) -> np.ndarray:
     return np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0
 
 
-def _write_diff_heatmap(baseline_image: Any, turbo_image: Any, path: Path) -> None:
+def _write_diff_heatmap(baseline_image: Any, shmoosh_image: Any, path: Path) -> None:
     from PIL import Image, ImageOps
 
     baseline = _image_array(baseline_image)
-    turbo = _image_array(turbo_image)
-    diff = np.mean(np.abs(turbo - baseline), axis=-1)
+    shmoosh = _image_array(shmoosh_image)
+    diff = np.mean(np.abs(shmoosh - baseline), axis=-1)
     scale = float(np.percentile(diff, 99.0))
     if scale <= 0.0:
         scale = 1.0

@@ -1,4 +1,4 @@
-from turbo_d.cli.runtime_smoke import main
+from shmoosh.cli.runtime_smoke import main
 
 
 if __name__ == "__main__":

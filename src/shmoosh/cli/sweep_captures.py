@@ -8,12 +8,12 @@ from pathlib import Path
 
 import numpy as np
 
-from turbo_d.probe import load_npz_metadata, load_npz_tensors, run_attention_probe
+from shmoosh.probe import load_npz_metadata, load_npz_tensors, run_attention_probe
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Run Turbo-D vs scalar probes across captured Q/K/V tensors."
+        description="Run Shmoosh vs scalar probes across captured Q/K/V tensors."
     )
     parser.add_argument("captures", nargs="+", help="Capture .npz files or directories.")
     parser.add_argument("--bits", default="3,4")
@@ -77,7 +77,7 @@ def _parse_ints(raw: str) -> list[int]:
 
 
 def _row(path, metadata, q, k, bits, qjl_bits, result) -> dict[str, object]:
-    turbo = asdict(result.turbo_d)
+    shmoosh = asdict(result.shmoosh)
     scalar = asdict(result.scalar)
     row: dict[str, object] = {
         "capture": str(path),
@@ -90,8 +90,8 @@ def _row(path, metadata, q, k, bits, qjl_bits, result) -> dict[str, object]:
         "k_tokens": k.shape[1],
         "dim": q.shape[2],
     }
-    for key, value in turbo.items():
-        row[f"turbo_d_{key}"] = value
+    for key, value in shmoosh.items():
+        row[f"shmoosh_{key}"] = value
         row[f"scalar_{key}"] = scalar[key]
         row[f"delta_{key}"] = value - scalar[key]
         row[f"ratio_{key}"] = value / scalar[key] if scalar[key] else np.nan

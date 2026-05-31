@@ -22,7 +22,7 @@ memory-bandwidth value disappears.
 The repeatable estimator is:
 
 ```bash
-uv run turbo-d-packed-policy-estimate \
+uv run shmoosh-packed-policy-estimate \
   --policy-file configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated30pct-k5-k6-qjl128-policy.json \
   --steps 20 \
   --steps 30
@@ -131,7 +131,7 @@ data path:
 
 1. A Torch-side packed key object can represent K5/K6 + QJL-128 keys for the
    accepted policy.
-2. Its byte accounting matches `turbo-d-packed-policy-estimate`.
+2. Its byte accounting matches `shmoosh-packed-policy-estimate`.
 3. A debug decode path reconstructs keys closely enough to match the current
    NumPy reference output.
 4. The fused-score path can then be introduced behind the same container.

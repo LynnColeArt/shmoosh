@@ -7,9 +7,9 @@ from pathlib import Path
 
 import numpy as np
 
-from turbo_d.metrics import mse
-from turbo_d.probe import load_npz_metadata, load_npz_tensors
-from turbo_d.runtime_attention import exact_attention_output, turbo_d_attention_output
+from shmoosh.metrics import mse
+from shmoosh.probe import load_npz_metadata, load_npz_tensors
+from shmoosh.runtime_attention import exact_attention_output, shmoosh_attention_output
 
 
 POLICIES = {
@@ -21,7 +21,7 @@ POLICIES = {
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Sweep runtime-style Turbo-D K/V quantization policies."
+        description="Sweep runtime-style Shmoosh K/V quantization policies."
     )
     parser.add_argument("captures", nargs="+", help="Capture .npz files or directories.")
     parser.add_argument("--policies", default="k_only,v_only,kv")
@@ -50,7 +50,7 @@ def main() -> None:
         reference = exact_attention_output(q, k, v)
         for policy_name in policies:
             policy = POLICIES[policy_name]
-            output = turbo_d_attention_output(
+            output = shmoosh_attention_output(
                 q,
                 k,
                 v,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from turbo_d.packed_estimator import (
+from shmoosh.packed_estimator import (
     PackedKeyAssumptions,
     PackedKeyFormat,
     estimate_policy_storage,
@@ -20,7 +20,7 @@ def test_packed_key_format_matches_expected_vector_sizes() -> None:
 
 def test_estimate_policy_storage_for_mixed_gated_policy() -> None:
     policy = {
-        "turbo_policy": {
+        "shmoosh_policy": {
             "bits": 5,
             "qjl_bits": 128,
             "quantize_keys": True,

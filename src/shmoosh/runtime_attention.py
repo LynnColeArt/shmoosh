@@ -4,10 +4,10 @@ from math import sqrt
 
 import numpy as np
 
-from turbo_d.quantization import EncodedVectors, TurboDCodec
+from shmoosh.quantization import EncodedVectors, ShmooshCodec
 
 
-def turbo_d_attention_output(
+def shmoosh_attention_output(
     q: np.ndarray,
     k: np.ndarray,
     v: np.ndarray,
@@ -22,7 +22,7 @@ def turbo_d_attention_output(
     codebook_samples: int = 80_000,
     lloyd_iters: int = 80,
 ) -> np.ndarray:
-    """Compute attention output with Turbo-D encoded keys and values.
+    """Compute attention output with Shmoosh encoded keys and values.
 
     Inputs are post-projection attention tensors with shape
     `(head_like, tokens, dim)`, where `head_like` can be heads or batch*heads.
@@ -45,7 +45,7 @@ def turbo_d_attention_output(
     key_codec = None
     encoded_k = None
     if quantize_keys:
-        key_codec = TurboDCodec(
+        key_codec = ShmooshCodec(
             dim=q.shape[-1],
             bits=key_bits,
             qjl_bits=qjl_bits,
@@ -56,7 +56,7 @@ def turbo_d_attention_output(
         encoded_k = key_codec.encode(k)
 
     if quantize_values:
-        value_codec = TurboDCodec(
+        value_codec = ShmooshCodec(
             dim=v.shape[-1],
             bits=value_bits,
             qjl_bits=0,
@@ -90,7 +90,7 @@ def exact_attention_output(q: np.ndarray, k: np.ndarray, v: np.ndarray) -> np.nd
     return (weights @ v).astype(np.float32)
 
 
-def torch_turbo_d_attention(
+def torch_shmoosh_attention(
     query,
     key,
     value,
@@ -133,7 +133,7 @@ def torch_turbo_d_attention(
         .reshape(batch * heads, k_tokens, dim)
         .numpy()
     )
-    out_np = turbo_d_attention_output(
+    out_np = shmoosh_attention_output(
         q_np,
         k_np,
         v_np,

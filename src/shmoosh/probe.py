@@ -6,13 +6,13 @@ from typing import Any
 
 import numpy as np
 
-from turbo_d.metrics import AttentionMetrics, attention_metrics
-from turbo_d.quantization import EncodedVectors, TurboDCodec, scalar_quantize
+from shmoosh.metrics import AttentionMetrics, attention_metrics
+from shmoosh.quantization import EncodedVectors, ShmooshCodec, scalar_quantize
 
 
 @dataclass(frozen=True)
 class ProbeResult:
-    turbo_d: AttentionMetrics
+    shmoosh: AttentionMetrics
     scalar: AttentionMetrics
 
 
@@ -46,7 +46,7 @@ def run_attention_probe(
     codebook_samples: int = 200_000,
     lloyd_iters: int = 80,
 ) -> ProbeResult:
-    codec = TurboDCodec(
+    codec = ShmooshCodec(
         dim=q.shape[-1],
         bits=bits,
         qjl_bits=qjl_bits,
@@ -58,19 +58,19 @@ def run_attention_probe(
     encoded_k = codec.encode(k)
     encoded_v = codec.encode(v)
     decoded_v = codec.decode(encoded_v)
-    turbo_scores = np.empty(q.shape[:-1] + (k.shape[-2],), dtype=np.float32)
+    shmoosh_scores = np.empty(q.shape[:-1] + (k.shape[-2],), dtype=np.float32)
 
     for head in range(q.shape[0]):
-        turbo_scores[head] = codec.estimate_dot(q[head], slice_encoded(encoded_k, head))
+        shmoosh_scores[head] = codec.estimate_dot(q[head], slice_encoded(encoded_k, head))
 
-    turbo = attention_metrics(q, k, v, turbo_scores, decoded_v)
+    shmoosh = attention_metrics(q, k, v, shmoosh_scores, decoded_v)
 
     scalar_k = scalar_quantize(k, bits)
     scalar_v = scalar_quantize(v, bits)
     scalar_scores = q @ np.swapaxes(scalar_k, -1, -2)
     scalar = attention_metrics(q, k, v, scalar_scores, scalar_v)
 
-    return ProbeResult(turbo_d=turbo, scalar=scalar)
+    return ProbeResult(shmoosh=shmoosh, scalar=scalar)
 
 
 def slice_encoded(encoded: EncodedVectors, head: int) -> EncodedVectors:

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "K6 Turbo-D policy for selected up_blocks.0.attentions.1 cross-attention modules in the local Underpaint Juggernaut SDXL checkpoint.",
+  "description": "K6 Shmoosh policy for selected up_blocks.0.attentions.1 cross-attention modules in the local Underpaint Juggernaut SDXL checkpoint.",
   "source": "docs/up-cross-attn1-sweep-2026-05-31.md",
   "validation": {
     "accepted_horizon_steps": 20,
@@ -57,7 +57,7 @@
     "quantize_keys": false,
     "quantize_values": false
   },
-  "turbo_policy": {
+  "shmoosh_policy": {
     "bits": 6,
     "key_bits": null,
     "value_bits": null,

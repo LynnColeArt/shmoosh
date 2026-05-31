@@ -3,14 +3,14 @@
 ## Code Path
 
 Policy loading now supports per-module processor overrides. The top-level
-`turbo_policy` remains the default, and each `quantized_modules` entry can
-override processor fields directly or with a nested `turbo_policy` object.
+`shmoosh_policy` remains the default, and each `quantized_modules` entry can
+override processor fields directly or with a nested `shmoosh_policy` object.
 
 Example:
 
 ```json
 {
-  "turbo_policy": {
+  "shmoosh_policy": {
     "bits": 5,
     "qjl_bits": 128,
     "quantize_keys": true,
@@ -78,7 +78,7 @@ The bridge policy was run through the three-case validation suite:
 
 ```bash
 HF_HUB_DISABLE_XET=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-uv run turbo-d-image-policy-suite \
+uv run shmoosh-image-policy-suite \
   --single-file /home/lynn/.underpaint/models/checkpoints/juggernaut-x-v10/Juggernaut-X-RunDiffusion-NSFW.safetensors \
   --pipeline-class sdxl \
   --config /home/lynn/.cache/huggingface/hub/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b \
