@@ -129,6 +129,48 @@ It validates the tensor shapes, byte counts, and reference decode path. It does
 not claim production speed, because the decode path still expands K before
 attention.
 
+## Packed Score Prototype
+
+The first score path is `shmoosh.packed_scores.packed_key_scores`:
+
+```text
+query: fp16/fp32[B, H, Q, D]
+packed_key_block: PackedKeyBlock[B, H, T, D]
+scores: fp32[B, H, Q, T]
+```
+
+The Torch reference and Triton prototype share the same math:
+
+1. Rotate query vectors into codec space with the deterministic codec rotation.
+2. Unpack K code indices from `PackedKeyBlock.codes`.
+3. Gather codebook centroids and accumulate the base dot product in codec space.
+4. Add the QJL residual correction from packed sign bits and residual norms.
+
+The Triton path still precomputes query-side projections in Torch:
+
+```text
+q_rot = Q @ rotation.T
+q_proj = Q @ qjl_matrix.T
+```
+
+This is deliberate for the first kernel slice. It isolates the K-side packed
+memory contract and proves that a GPU kernel can consume packed codes and sign
+bytes directly without decoding full model-space K.
+
+Smoke it with:
+
+```bash
+uv run shmoosh-packed-score-smoke \
+  --batch-size 1 \
+  --heads 20 \
+  --query-tokens 64 \
+  --key-tokens 77 \
+  --dim 64 \
+  --bits 5 \
+  --qjl-bits 128 \
+  --backend auto
+```
+
 ## Kernel Direction
 
 The simplest production path is a two-stage Torch/Triton design:

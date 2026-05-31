@@ -311,3 +311,21 @@ This is still a debug path: it packs K into kernel-shaped tensors, verifies byte
 accounting, and decodes through the reference codec. The production value comes
 from the next step, where the score kernel consumes `PackedKeyBlock.codes`
 directly instead of expanding full fp16 K first.
+
+Smoke-test the packed-key score path:
+
+```bash
+uv run shmoosh-packed-score-smoke \
+  --batch-size 1 \
+  --heads 20 \
+  --query-tokens 64 \
+  --key-tokens 77 \
+  --dim 64 \
+  --bits 5 \
+  --qjl-bits 128 \
+  --backend auto
+```
+
+On CUDA, `backend=auto` uses the first Triton score kernel. It still precomputes
+query-side codec projections in Torch, but the kernel consumes packed K codes
+and QJL sign bytes directly.

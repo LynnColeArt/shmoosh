@@ -31,6 +31,7 @@ shmoosh-image-module-sweep = "shmoosh.cli.image_module_sweep:main"
 shmoosh-image-policy-suite = "shmoosh.cli.image_policy_suite:main"
 shmoosh-packed-policy-estimate = "shmoosh.cli.packed_policy_estimate:main"
 shmoosh-packed-key-smoke = "shmoosh.cli.packed_key_smoke:main"
+shmoosh-packed-score-smoke = "shmoosh.cli.packed_score_smoke:main"
 
 [build-system]
 requires = ["hatchling"]
