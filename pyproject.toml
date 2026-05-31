@@ -26,6 +26,7 @@ turbo-d-attention-probe = "turbo_d.cli.attention_probe:main"
 turbo-d-policy-sweep = "turbo_d.cli.policy_sweep:main"
 turbo-d-sweep-captures = "turbo_d.cli.sweep_captures:main"
 turbo-d-runtime-smoke = "turbo_d.cli.runtime_smoke:main"
+turbo-d-image-ab-smoke = "turbo_d.cli.image_ab_smoke:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -186,3 +186,14 @@ By attention kind, K-only is especially strong for cross-attention:
 | K/V 3/5 | cross-attn | 0.00015824 | 0.00328615 |
 
 Interpretation: on this fixture, key compression with QJL-128 causes less output drift than value compression. Raising V precision helps, but even K3/V5 trails K-only. The first image-generation prototype should therefore start with `K3 + QJL-128 + exact V`, then test whether V4/V5 is acceptable later.
+
+## Image A/B Follow-Up
+
+The first image-level A/B smoke is recorded in `docs/image-ab-smoke-2026-05-31.md`.
+
+At 512px, 2 denoising steps, and one SDXL U-Net self-attention module
+(`down_blocks.2.attentions.0.transformer_blocks.0.attn1`), the exact-processor
+calibration produced `mse=0.00001533` and `psnr=48.14 dB`, while the
+`K3 + QJL-128 + exact V` run produced `mse=0.00433298` and `psnr=23.63 dB`.
+That means the harness itself is stable, and the first real image delta is
+coming from key compression rather than processor plumbing.
