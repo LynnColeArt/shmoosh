@@ -9,6 +9,15 @@ from turbo_d.cli.image_ab_smoke import (
     _select_policy_modules,
 )
 from turbo_d.cli.image_policy_suite import _cases_from_payload
+from turbo_d.diffusers_processor import DenoisingStepState, ScheduledTurboDAttnProcessor
+
+
+class _FakeProcessor:
+    def __init__(self, label: str) -> None:
+        self.label = label
+
+    def __call__(self, *_args, **_kwargs) -> str:
+        return self.label
 
 
 def test_select_policy_modules_prefers_names() -> None:
@@ -141,6 +150,7 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
             {
                 "name": "b.attn2",
                 "bits": 6,
+                "quantize_start_step": 4,
             },
         ],
     }
@@ -151,6 +161,26 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
     assert metadata["mixed"] is True
     assert [entry["bits"] for entry in metadata["modules"]] == [5, 6]
     assert [entry["index"] for entry in metadata["modules"]] == [0, 1]
+    assert [entry["quantize_start_step"] for entry in metadata["modules"]] == [0, 4]
+
+
+def test_scheduled_processor_dispatches_by_step_window() -> None:
+    step_state = DenoisingStepState(current_step=0, total_steps=20)
+    processor = ScheduledTurboDAttnProcessor(
+        original_processor=_FakeProcessor("exact"),
+        turbo_processor=_FakeProcessor("turbo"),
+        step_state=step_state,
+        quantize_start_step=4,
+        quantize_end_step=10,
+    )
+
+    assert processor(None, None) == "exact"
+    step_state.current_step = 4
+    assert processor(None, None) == "turbo"
+    step_state.current_step = 9
+    assert processor(None, None) == "turbo"
+    step_state.current_step = 10
+    assert processor(None, None) == "exact"
 
 
 def test_policy_suite_cases_use_file_defaults() -> None:

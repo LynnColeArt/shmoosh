@@ -243,3 +243,10 @@ Larger mixed policies failed composition, but the narrow bridge cleared the
 20-step compass A/B (`psnr=42.08 dB`) and the three-case validation suite
 (`min_psnr=37.85 dB`, `mean_psnr=43.42 dB`). The tracked policy is
 `configs/underpaint-juggernaut-sdxl-up0-cross-mixed-bridge-k5-k6-qjl128-policy.json`.
+
+Timestep gating is recorded in `docs/timestep-gating-2026-05-31.md`. Leaving
+the first 4 of 20 denoising steps exact rescued the failed full mixed policy
+from `psnr=24.33 dB` to `psnr=46.75 dB` on the compass prompt. The same gated
+policy cleared the three-case validation suite (`min_psnr=43.85 dB`,
+`mean_psnr=48.10 dB`). The tracked policy is
+`configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated20-k5-k6-qjl128-policy.json`.

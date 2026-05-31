@@ -25,6 +25,7 @@ from turbo_d.cli.image_ab_smoke import (
     _set_progress_bar,
     _write_diff_heatmap,
 )
+from turbo_d.diffusers_processor import DenoisingStepState
 
 
 def main() -> None:
@@ -102,6 +103,7 @@ def main() -> None:
     processor_metadata = _policy_processor_metadata(
         all_modules, policy_selection, args=args, policy=policy
     )
+    step_state = DenoisingStepState(total_steps=args.steps)
     original_processors = {
         id(module): getattr(module, "processor", None) for _name, module in modules
     }
@@ -122,6 +124,7 @@ def main() -> None:
                     policy_selection=policy_selection,
                     policy=policy,
                     processor_metadata=processor_metadata,
+                    step_state=step_state,
                 )
             )
     finally:
@@ -161,10 +164,12 @@ def _run_case(
     policy_selection: list[tuple[str, Any, dict[str, Any]]],
     policy: dict[str, Any],
     processor_metadata: dict[str, Any],
+    step_state: DenoisingStepState,
 ) -> dict[str, Any]:
     case_dir = output_dir / _safe_case_id(case.case_id)
     case_dir.mkdir(parents=True, exist_ok=True)
     common_kwargs = _pipeline_kwargs(case)
+    step_state.total_steps = case.steps
 
     baseline_image, baseline_stats = _run_image(
         pipe,
@@ -173,13 +178,16 @@ def _run_case(
         common_kwargs=common_kwargs,
         label=f"{case.case_id}:baseline",
     )
-    _install_policy_processors(policy_selection, args=args, policy=policy)
+    _install_policy_processors(
+        policy_selection, args=args, policy=policy, step_state=step_state
+    )
     turbo_image, turbo_stats = _run_image(
         pipe,
         torch=torch,
         args=case,
         common_kwargs=common_kwargs,
         label=f"{case.case_id}:turbo",
+        step_state=step_state,
     )
 
     baseline_path = case_dir / "baseline.png"

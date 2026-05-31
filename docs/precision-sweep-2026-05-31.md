@@ -96,7 +96,6 @@ All three additional cases cleared the rough 30 dB PSNR gate, with minimum
 
 ## Next Slice
 
-1. Add timestep-window support so fragile early denoising steps can stay exact.
-2. Start designing timestep/layer policy machinery before broadening beyond
-   hand-selected modules.
+1. Add percentage-based timestep windows so policies scale beyond 20-step runs.
+2. Start designing production packing around timestep-aware policies.
 3. Add a stricter validation lane once another attention group has a candidate.

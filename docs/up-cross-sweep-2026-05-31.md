@@ -147,8 +147,7 @@ not.
 
 ## Next Slice
 
-1. Add timestep-window support, because larger mixed policies need composition
-   constraints beyond per-module bits.
+1. Add percentage-based timestep windows so policies scale beyond 20-step runs.
 2. Draft the production-path design for packed K storage and a Torch/Triton
    attention kernel.
 3. Add a stricter stress lane once the next attention group has a candidate:

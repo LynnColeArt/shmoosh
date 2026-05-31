@@ -1,8 +1,57 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from turbo_d.runtime_attention import torch_turbo_d_attention
+
+
+@dataclass
+class DenoisingStepState:
+    current_step: int = 0
+    total_steps: int | None = None
+
+
+@dataclass(frozen=True)
+class ScheduledTurboDAttnProcessor:
+    original_processor: Any
+    turbo_processor: Any
+    step_state: DenoisingStepState
+    quantize_start_step: int = 0
+    quantize_end_step: int | None = None
+
+    def __call__(
+        self,
+        attn,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        temb=None,
+        *args,
+        **kwargs,
+    ):
+        processor = (
+            self.turbo_processor
+            if self._quantize_current_step()
+            else self.original_processor or _sdpa_processor()
+        )
+        return processor(
+            attn,
+            hidden_states,
+            encoder_hidden_states,
+            attention_mask,
+            temb,
+            *args,
+            **kwargs,
+        )
+
+    def _quantize_current_step(self) -> bool:
+        step = self.step_state.current_step
+        if step < self.quantize_start_step:
+            return False
+        if self.quantize_end_step is not None and step >= self.quantize_end_step:
+            return False
+        return True
 
 
 @dataclass(frozen=True)

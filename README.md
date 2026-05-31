@@ -232,6 +232,18 @@ not compose, but this bridge cleared the 20-step compass A/B with
 `psnr=42.08 dB` and the three-case validation suite with `min_psnr=37.85 dB`;
 see `docs/mixed-policy-2026-05-31.md`.
 
+Policy entries can also declare timestep windows. The first timestep-gated
+candidate is:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated20-k5-k6-qjl128-policy.json
+```
+
+It leaves the first 4 of 20 denoising steps exact, then quantizes seven modules
+for the remaining 16 steps. This rescued the failed full mixed policy from
+`psnr=24.33 dB` to `psnr=46.75 dB`, and cleared the three-case validation suite
+with `min_psnr=43.85 dB`; see `docs/timestep-gating-2026-05-31.md`.
+
 ## GPU Target
 
 The practical target is the 10-12GB VRAM band:

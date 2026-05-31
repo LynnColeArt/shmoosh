@@ -114,9 +114,24 @@ across attention groups. The next policy mechanism should be timestep-aware
 module gating, so a module can be exact during fragile early steps and quantized
 later.
 
+## Timestep Follow-Up
+
+Timestep gating is recorded in `docs/timestep-gating-2026-05-31.md`. The larger
+mixed policy that failed at `psnr=24.33 dB` was rescued by leaving the first
+four of 20 denoising steps exact, then quantizing the remaining 16 steps:
+
+```text
+psnr=46.75 dB
+```
+
+The tracked exact-first-4 policy is:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated20-k5-k6-qjl128-policy.json
+```
+
 ## Next Slice
 
-1. Add timestep-window support to policy entries.
-2. Re-test the rejected larger mixed policies with early-step exact fallback.
-3. Continue the up-block sweep only after the policy machinery can express
-   composition constraints.
+1. Add percentage-based timestep windows so policies scale beyond 20-step runs.
+2. Stress the gated policy at more seeds and at a non-512 size.
+3. Continue the up-block sweep against the timestep-aware policy surface.

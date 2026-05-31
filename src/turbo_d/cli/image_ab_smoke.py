@@ -9,7 +9,11 @@ from typing import Any
 
 import numpy as np
 
-from turbo_d.diffusers_processor import TurboDAttnProcessor
+from turbo_d.diffusers_processor import (
+    DenoisingStepState,
+    ScheduledTurboDAttnProcessor,
+    TurboDAttnProcessor,
+)
 
 
 def main() -> None:
@@ -121,8 +125,11 @@ def main() -> None:
     )
 
     processor_metadata: dict[str, Any]
+    step_state = DenoisingStepState(total_steps=args.steps) if policy_selection else None
     if policy_selection:
-        _install_policy_processors(policy_selection, args=args, policy=policy)
+        _install_policy_processors(
+            policy_selection, args=args, policy=policy, step_state=step_state
+        )
         processor_metadata = _policy_processor_metadata(
             all_modules, policy_selection, args=args, policy=policy
         )
@@ -138,6 +145,7 @@ def main() -> None:
         args=args,
         common_kwargs=common_kwargs,
         label="turbo",
+        step_state=step_state,
     )
 
     baseline_path = output_dir / "baseline.png"
@@ -406,10 +414,23 @@ def _install_policy_processors(
     *,
     args: argparse.Namespace,
     policy: dict[str, Any],
+    step_state: DenoisingStepState | None = None,
 ) -> None:
     for name, module, entry in selection:
         config = _processor_config(args, policy=policy, module_entry=entry)
-        _install_processor([(name, module)], TurboDAttnProcessor(**config))
+        processor = TurboDAttnProcessor(**config)
+        window = _module_window_config(entry)
+        if window["quantize_start_step"] > 0 or window["quantize_end_step"] is not None:
+            if step_state is None:
+                raise RuntimeError("scheduled policy processors require step_state")
+            processor = ScheduledTurboDAttnProcessor(
+                original_processor=getattr(module, "processor", None),
+                turbo_processor=processor,
+                step_state=step_state,
+                quantize_start_step=window["quantize_start_step"],
+                quantize_end_step=window["quantize_end_step"],
+            )
+        _install_processor([(name, module)], processor)
 
 
 def _policy_processor_metadata(
@@ -431,16 +452,26 @@ def _policy_processor_metadata(
                 "index": module_indices[id(module)],
                 "name": name,
                 **_processor_metadata(config),
+                **_module_window_config(entry),
             }
         )
 
     default_metadata = _processor_metadata(default_config)
+    default_module_metadata = {
+        **default_metadata,
+        "quantize_start_step": 0,
+        "quantize_end_step": None,
+    }
     return {
         **default_metadata,
         "mixed": any(
-            _processor_metadata(_processor_config(args, policy=policy, module_entry=entry))
-            != default_metadata
-            for _name, _module, entry in selection
+            {
+                key: value
+                for key, value in module_config.items()
+                if key not in {"index", "name"}
+            }
+            != default_module_metadata
+            for module_config in module_configs
         ),
         "modules": module_configs,
     }
@@ -456,6 +487,17 @@ def _processor_metadata(config: dict[str, Any]) -> dict[str, Any]:
         "processor_seed": config["seed"],
         "quantize_keys": config["quantize_keys"],
         "quantize_values": config["quantize_values"],
+    }
+
+
+def _module_window_config(entry: dict[str, Any]) -> dict[str, int | None]:
+    return {
+        "quantize_start_step": int(entry.get("quantize_start_step", 0)),
+        "quantize_end_step": (
+            None
+            if entry.get("quantize_end_step") is None
+            else int(entry["quantize_end_step"])
+        ),
     }
 
 
@@ -511,6 +553,7 @@ def _run_image(
     args: argparse.Namespace,
     common_kwargs: dict[str, Any],
     label: str,
+    step_state: DenoisingStepState | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     if _is_cuda_device(torch, args.device):
         torch.cuda.empty_cache()
@@ -522,7 +565,16 @@ def _run_image(
     )
     start = time.perf_counter()
     with torch.inference_mode():
-        result = pipe(**common_kwargs, generator=generator)
+        if step_state is not None:
+            step_state.current_step = 0
+            result = pipe(
+                **common_kwargs,
+                generator=generator,
+                callback_on_step_end=_step_end_callback(step_state),
+                callback_on_step_end_tensor_inputs=[],
+            )
+        else:
+            result = pipe(**common_kwargs, generator=generator)
     if _is_cuda_device(torch, args.device):
         torch.cuda.synchronize()
     elapsed = time.perf_counter() - start
@@ -540,6 +592,14 @@ def _run_image(
         )
 
     return result.images[0], stats
+
+
+def _step_end_callback(step_state: DenoisingStepState):
+    def callback(_pipeline, step_index: int, _timestep, callback_kwargs: dict[str, Any]):
+        step_state.current_step = step_index + 1
+        return callback_kwargs
+
+    return callback
 
 
 def _generator_device(torch: Any, device: str) -> str:

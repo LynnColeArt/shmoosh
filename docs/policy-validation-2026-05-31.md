@@ -166,9 +166,45 @@ max_mse=0.00016397
 The mixed bridge confirms the code path and reveals the next missing policy
 axis: timestep windows.
 
+## Timestep-Gated Full Mixed Policy
+
+The full mixed policy failed without timestep gating (`psnr=24.33 dB`), but
+passed when the first 4 of 20 denoising steps stayed exact:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated20-k5-k6-qjl128-policy.json
+```
+
+Compass A/B:
+
+```text
+mse=0.00002115
+mae=0.00186997
+psnr=46.75 dB
+```
+
+Validation suite:
+
+| Case | Seed | MSE | MAE | PSNR |
+| --- | ---: | ---: | ---: | ---: |
+| reading-nook-seed1 | 1 | 0.00004122 | 0.00297608 | 43.85 dB |
+| maple-leaf-seed2 | 2 | 0.00003032 | 0.00180282 | 45.18 dB |
+| misty-lake-seed3 | 3 | 0.00000297 | 0.00040782 | 55.27 dB |
+
+Aggregate over the three additional cases:
+
+```text
+mean_psnr=48.10 dB
+min_psnr=43.85 dB
+max_mse=0.00004122
+```
+
+This is the strongest evidence so far that the missing policy axis is
+trajectory-aware activation, not just bit depth.
+
 ## Next Slice
 
-1. Add timestep-window support to policy entries.
-2. Re-test larger mixed policies with early-step exact fallback.
+1. Add percentage-based timestep windows so policies scale beyond 20-step runs.
+2. Stress the gated policy at more seeds and at a non-512 size.
 3. Start a production-path design note for packed key storage and a Torch/Triton
-   attention kernel once the policy surface stops shifting.
+   attention kernel against the timestep-aware policy surface.

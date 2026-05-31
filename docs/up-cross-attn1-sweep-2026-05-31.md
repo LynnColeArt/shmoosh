@@ -123,8 +123,7 @@ accepted pair.
 
 ## Next Slice
 
-1. Add timestep-window support to policy loading, so fragile early denoising
-   steps can stay exact.
-2. Re-test the rejected larger mixed policies with early-step exact fallback.
-3. Continue sweeping `up_blocks.0.attentions.2` after the policy surface can
-   express composition constraints.
+1. Add percentage-based timestep windows so policies scale beyond 20-step runs.
+2. Stress the timestep-gated mixed policy at more seeds and at a non-512 size.
+3. Continue sweeping `up_blocks.0.attentions.2` against the timestep-aware
+   policy surface.

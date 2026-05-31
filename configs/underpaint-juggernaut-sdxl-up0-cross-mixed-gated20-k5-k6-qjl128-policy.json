@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "description": "Timestep-gated mixed K5/K6 Turbo-D policy for selected up_blocks.0 cross-attention modules in the local Underpaint Juggernaut SDXL checkpoint.",
+  "source": "docs/timestep-gating-2026-05-31.md",
+  "validation": {
+    "accepted_horizon_steps": 20,
+    "prompt_count": 4,
+    "seed_count": 4,
+    "quantize_start_step": 4,
+    "combined_policy": {
+      "modules": [49, 59, 61, 65, 67, 79, 87],
+      "mse": 0.00002114714152412489,
+      "mae": 0.0018699746578931808,
+      "psnr_db": 46.74748328250986
+    },
+    "validation_suite": {
+      "case_file": "configs/underpaint-juggernaut-validation-cases.json",
+      "output_dir": "captures/image-policy-suite-juggernaut-up0-cross-mixed-gated20-20step",
+      "case_count": 3,
+      "min_psnr_db": 43.84854616715369,
+      "mean_psnr_db": 48.1004345874585,
+      "max_mse": 0.00004122354948776774
+    },
+    "note": "Exact first four denoising steps, then quantize the remaining sixteen steps. This rescues the full mixed policy that failed without timestep gating."
+  },
+  "selection_metric": {
+    "note": "Selected from exact-first sweep over start steps 0, 2, 4, 6, and 10."
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "turbo_policy": {
+    "bits": 5,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 128,
+    "codebook_samples": 20000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false
+  },
+  "quantized_modules": [
+    {
+      "index": 49,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn2",
+      "quantize_start_step": 4
+    },
+    {
+      "index": 59,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.5.attn2",
+      "quantize_start_step": 4
+    },
+    {
+      "index": 61,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.6.attn2",
+      "quantize_start_step": 4
+    },
+    {
+      "index": 65,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.8.attn2",
+      "quantize_start_step": 4
+    },
+    {
+      "index": 67,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.9.attn2",
+      "quantize_start_step": 4
+    },
+    {
+      "index": 79,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.5.attn2",
+      "bits": 6,
+      "quantize_start_step": 4
+    },
+    {
+      "index": 87,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.9.attn2",
+      "bits": 6,
+      "quantize_start_step": 4
+    }
+  ],
+  "exact_modules": [
+    {
+      "index": 85,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.8.attn2",
+      "reason": "Failed combined K6 composition with modules 79 and 87."
+    }
+  ],
+  "timestep_sweep": [
+    {
+      "quantize_start_step": 0,
+      "mse": 0.003693393664434552,
+      "mae": 0.033474382013082504,
+      "psnr_db": 24.32574400125894
+    },
+    {
+      "quantize_start_step": 2,
+      "mse": 0.0009272869792766869,
+      "mae": 0.017096320167183876,
+      "psnr_db": 30.327858384247182
+    },
+    {
+      "quantize_start_step": 4,
+      "mse": 0.00002114714152412489,
+      "mae": 0.0018699746578931808,
+      "psnr_db": 46.74748328250986
+    },
+    {
+      "quantize_start_step": 6,
+      "mse": 0.000013884698091715109,
+      "mae": 0.0016339471330866218,
+      "psnr_db": 48.57463559091805
+    },
+    {
+      "quantize_start_step": 10,
+      "mse": 0.0000036329727208794793,
+      "mae": 0.0007237154059112072,
+      "psnr_db": 54.39737863138109
+    }
+  ]
+}
