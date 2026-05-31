@@ -100,8 +100,11 @@ def main() -> None:
     _move_pipeline(pipe, args)
     _set_progress_bar(pipe)
 
-    processor_metadata = _policy_processor_metadata(
-        all_modules, policy_selection, args=args, policy=policy
+    summary_processor_metadata = _policy_processor_metadata(
+        all_modules,
+        policy_selection,
+        args=_case_policy_args(args, cases[0]),
+        policy=policy,
     )
     step_state = DenoisingStepState(total_steps=args.steps)
     original_processors = {
@@ -123,7 +126,6 @@ def main() -> None:
                     modules=modules,
                     policy_selection=policy_selection,
                     policy=policy,
-                    processor_metadata=processor_metadata,
                     step_state=step_state,
                 )
             )
@@ -143,7 +145,7 @@ def main() -> None:
         "dtype": args.dtype,
         "model_cpu_offload": args.model_cpu_offload,
         "selected_modules": _module_metadata(all_modules, modules),
-        "processor": processor_metadata,
+        "processor": summary_processor_metadata,
         "policy": policy,
         "rows": rows,
         "aggregate": _aggregate_rows(rows),
@@ -163,13 +165,18 @@ def _run_case(
     modules: list[tuple[str, Any]],
     policy_selection: list[tuple[str, Any, dict[str, Any]]],
     policy: dict[str, Any],
-    processor_metadata: dict[str, Any],
     step_state: DenoisingStepState,
 ) -> dict[str, Any]:
     case_dir = output_dir / _safe_case_id(case.case_id)
     case_dir.mkdir(parents=True, exist_ok=True)
     common_kwargs = _pipeline_kwargs(case)
     step_state.total_steps = case.steps
+    processor_metadata = _policy_processor_metadata(
+        all_modules,
+        policy_selection,
+        args=_case_policy_args(args, case),
+        policy=policy,
+    )
 
     baseline_image, baseline_stats = _run_image(
         pipe,
@@ -311,6 +318,14 @@ def _case_metadata(case: argparse.Namespace) -> dict[str, Any]:
         "width": case.width,
         "guidance_scale": case.guidance_scale,
     }
+
+
+def _case_policy_args(
+    args: argparse.Namespace, case: argparse.Namespace
+) -> argparse.Namespace:
+    values = vars(args).copy()
+    values["steps"] = case.steps
+    return argparse.Namespace(**values)
 
 
 def _aggregate_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:

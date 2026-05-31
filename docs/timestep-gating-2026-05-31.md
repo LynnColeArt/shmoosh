@@ -13,9 +13,23 @@ Policy entries now support timestep windows:
 }
 ```
 
+They also support percentage windows, which are resolved per run with
+`ceil(total_steps * percent)`:
+
+```json
+{
+  "index": 49,
+  "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn2",
+  "quantize_start_percent": 0.2,
+  "quantize_end_percent": null
+}
+```
+
 The default window is step `0` through the end of the denoising trajectory. A
 non-zero `quantize_start_step` leaves the original Diffusers processor installed
-for early steps, then switches to the Turbo-D processor for later steps.
+for early steps, then switches to the Turbo-D processor for later steps. A
+percentage start window does the same thing, but scales with the requested
+number of denoising steps.
 
 The image A/B and policy-suite CLIs track the current denoising step through
 Diffusers `callback_on_step_end`, seeding step `0` before the call and advancing
@@ -56,6 +70,12 @@ The tracked candidate uses exact-first 4 steps:
 configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated20-k5-k6-qjl128-policy.json
 ```
 
+The horizon-scaled version uses exact-first 20%:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated20pct-k5-k6-qjl128-policy.json
+```
+
 ## Validation Suite
 
 The exact-first-4 policy was run through the same three-case validation suite:
@@ -90,6 +110,21 @@ min_psnr=43.85 dB
 max_mse=0.00004122
 ```
 
+## Percentage Window Stress
+
+The exact-first-20% policy reproduced the absolute step-4 result at 20 steps
+and stayed stable when the denoising horizon changed to 30 steps:
+
+| Check | Resolved Start Step | MSE | MAE | PSNR |
+| --- | ---: | ---: | ---: | ---: |
+| 20 steps, 512x512 | 4 | 0.00002115 | 0.00186997 | 46.75 dB |
+| 30 steps, 512x512 | 6 | 0.00002689 | 0.00236529 | 45.70 dB |
+| 20 steps, 768x512 | 4 | 0.00011053 | 0.00330194 | 39.57 dB |
+
+The 30-step run confirms that the gate is not a hard-coded 20-step artifact.
+The non-square run has a larger delta, but still remains far above the failed
+ungated mixed policy.
+
 ## Interpretation
 
 This is the strongest policy result so far. Exact-first gating rescued a mixed
@@ -107,6 +142,6 @@ respect early denoising sensitivity, not just per-layer sensitivity.
 
 ## Next Slice
 
-1. Add percentage-based timestep windows so policies scale beyond 20-step runs.
-2. Stress the gated policy at more seeds and at a non-512 size.
+1. Expand percentage-window validation across more seeds and prompts.
+2. Test whether 10%, 20%, and 30% gates rank consistently at 30 steps.
 3. Start the packed-K production design against this policy surface.

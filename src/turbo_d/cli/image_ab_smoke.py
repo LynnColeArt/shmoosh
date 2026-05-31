@@ -420,7 +420,7 @@ def _install_policy_processors(
         config = _processor_config(args, policy=policy, module_entry=entry)
         processor = TurboDAttnProcessor(**config)
         window = _module_window_config(entry)
-        if window["quantize_start_step"] > 0 or window["quantize_end_step"] is not None:
+        if _uses_scheduled_window(window):
             if step_state is None:
                 raise RuntimeError("scheduled policy processors require step_state")
             processor = ScheduledTurboDAttnProcessor(
@@ -429,6 +429,8 @@ def _install_policy_processors(
                 step_state=step_state,
                 quantize_start_step=window["quantize_start_step"],
                 quantize_end_step=window["quantize_end_step"],
+                quantize_start_percent=window["quantize_start_percent"],
+                quantize_end_percent=window["quantize_end_percent"],
             )
         _install_processor([(name, module)], processor)
 
@@ -453,6 +455,7 @@ def _policy_processor_metadata(
                 "name": name,
                 **_processor_metadata(config),
                 **_module_window_config(entry),
+                **_resolved_module_window_config(entry, total_steps=args.steps),
             }
         )
 
@@ -461,6 +464,10 @@ def _policy_processor_metadata(
         **default_metadata,
         "quantize_start_step": 0,
         "quantize_end_step": None,
+        "quantize_start_percent": None,
+        "quantize_end_percent": None,
+        "resolved_quantize_start_step": 0,
+        "resolved_quantize_end_step": None,
     }
     return {
         **default_metadata,
@@ -490,7 +497,7 @@ def _processor_metadata(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _module_window_config(entry: dict[str, Any]) -> dict[str, int | None]:
+def _module_window_config(entry: dict[str, Any]) -> dict[str, int | float | None]:
     return {
         "quantize_start_step": int(entry.get("quantize_start_step", 0)),
         "quantize_end_step": (
@@ -498,7 +505,60 @@ def _module_window_config(entry: dict[str, Any]) -> dict[str, int | None]:
             if entry.get("quantize_end_step") is None
             else int(entry["quantize_end_step"])
         ),
+        "quantize_start_percent": (
+            None
+            if entry.get("quantize_start_percent") is None
+            else float(entry["quantize_start_percent"])
+        ),
+        "quantize_end_percent": (
+            None
+            if entry.get("quantize_end_percent") is None
+            else float(entry["quantize_end_percent"])
+        ),
     }
+
+
+def _resolved_module_window_config(
+    entry: dict[str, Any], *, total_steps: int
+) -> dict[str, int | None]:
+    window = _module_window_config(entry)
+    return {
+        "resolved_quantize_start_step": _resolve_window_step(
+            absolute_step=window["quantize_start_step"],
+            percent=window["quantize_start_percent"],
+            total_steps=total_steps,
+            default=0,
+        ),
+        "resolved_quantize_end_step": _resolve_window_step(
+            absolute_step=window["quantize_end_step"],
+            percent=window["quantize_end_percent"],
+            total_steps=total_steps,
+            default=None,
+        ),
+    }
+
+
+def _resolve_window_step(
+    *,
+    absolute_step: int | float | None,
+    percent: int | float | None,
+    total_steps: int,
+    default: int | None,
+) -> int | None:
+    if percent is not None:
+        return math.ceil(total_steps * float(percent))
+    if absolute_step is None:
+        return default
+    return int(absolute_step)
+
+
+def _uses_scheduled_window(window: dict[str, int | float | None]) -> bool:
+    return (
+        int(window["quantize_start_step"] or 0) > 0
+        or window["quantize_end_step"] is not None
+        or window["quantize_start_percent"] is not None
+        or window["quantize_end_percent"] is not None
+    )
 
 
 def _parse_indices(raw: str) -> list[int]:

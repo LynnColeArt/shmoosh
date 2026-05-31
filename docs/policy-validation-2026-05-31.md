@@ -202,9 +202,30 @@ max_mse=0.00004122
 This is the strongest evidence so far that the missing policy axis is
 trajectory-aware activation, not just bit depth.
 
+## Percentage Timestep Window
+
+The same full mixed policy now has a horizon-scaled form:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated20pct-k5-k6-qjl128-policy.json
+```
+
+It leaves the first 20% of denoising exact, using
+`ceil(total_steps * 0.2)` as the resolved start step. On the compass prompt,
+it reproduced the absolute 20-step gate and held at a 30-step horizon:
+
+| Check | Resolved Start Step | MSE | MAE | PSNR |
+| --- | ---: | ---: | ---: | ---: |
+| 20 steps, 512x512 | 4 | 0.00002115 | 0.00186997 | 46.75 dB |
+| 30 steps, 512x512 | 6 | 0.00002689 | 0.00236529 | 45.70 dB |
+| 20 steps, 768x512 | 4 | 0.00011053 | 0.00330194 | 39.57 dB |
+
+This moves the policy surface from absolute step numbers to denoising-fraction
+windows, which should transfer better across local generation settings.
+
 ## Next Slice
 
-1. Add percentage-based timestep windows so policies scale beyond 20-step runs.
-2. Stress the gated policy at more seeds and at a non-512 size.
+1. Expand percentage-window validation across more seeds and prompts.
+2. Compare 10%, 20%, and 30% gates at 30 denoising steps.
 3. Start a production-path design note for packed key storage and a Torch/Triton
    attention kernel against the timestep-aware policy surface.

@@ -250,3 +250,7 @@ from `psnr=24.33 dB` to `psnr=46.75 dB` on the compass prompt. The same gated
 policy cleared the three-case validation suite (`min_psnr=43.85 dB`,
 `mean_psnr=48.10 dB`). The tracked policy is
 `configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated20-k5-k6-qjl128-policy.json`.
+The horizon-scaled 20% variant is
+`configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated20pct-k5-k6-qjl128-policy.json`;
+it reproduced the 20-step result, held at 30 steps (`psnr=45.70 dB`), and
+passed a `768x512` shape stress (`psnr=39.57 dB`).

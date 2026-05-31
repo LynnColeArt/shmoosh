@@ -244,6 +244,16 @@ for the remaining 16 steps. This rescued the failed full mixed policy from
 `psnr=24.33 dB` to `psnr=46.75 dB`, and cleared the three-case validation suite
 with `min_psnr=43.85 dB`; see `docs/timestep-gating-2026-05-31.md`.
 
+The horizon-scaled form is:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated20pct-k5-k6-qjl128-policy.json
+```
+
+It leaves the first 20% of denoising exact. That reproduced the 20-step result
+at `psnr=46.75 dB`, held at 30 steps with `psnr=45.70 dB`, and passed a
+`768x512` shape stress at `psnr=39.57 dB`.
+
 ## GPU Target
 
 The practical target is the 10-12GB VRAM band:

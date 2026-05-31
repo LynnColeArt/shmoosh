@@ -130,8 +130,17 @@ The tracked exact-first-4 policy is:
 configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated20-k5-k6-qjl128-policy.json
 ```
 
+The horizon-scaled variant uses exact-first 20%:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated20pct-k5-k6-qjl128-policy.json
+```
+
+It reproduced the 20-step compass result (`psnr=46.75 dB`), held at 30 steps
+(`psnr=45.70 dB`), and passed a `768x512` shape stress (`psnr=39.57 dB`).
+
 ## Next Slice
 
-1. Add percentage-based timestep windows so policies scale beyond 20-step runs.
-2. Stress the gated policy at more seeds and at a non-512 size.
+1. Expand percentage-window validation across more prompts and seeds.
+2. Compare 10%, 20%, and 30% gates at 30 denoising steps.
 3. Continue the up-block sweep against the timestep-aware policy surface.

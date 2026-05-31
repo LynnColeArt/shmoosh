@@ -47,6 +47,7 @@ def test_policy_processor_config_overrides_cli_defaults() -> None:
         key_bits=None,
         value_bits=5,
         codebook_samples=100,
+        steps=20,
     )
     policy = {
         "turbo_policy": {
@@ -83,6 +84,7 @@ def test_module_policy_can_override_processor_config() -> None:
         key_bits=None,
         value_bits=5,
         codebook_samples=100,
+        steps=20,
     )
     policy = {
         "turbo_policy": {
@@ -125,6 +127,7 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
         key_bits=None,
         value_bits=5,
         codebook_samples=100,
+        steps=20,
     )
     first = object()
     second = object()
@@ -150,7 +153,7 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
             {
                 "name": "b.attn2",
                 "bits": 6,
-                "quantize_start_step": 4,
+                "quantize_start_percent": 0.2,
             },
         ],
     }
@@ -161,7 +164,8 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
     assert metadata["mixed"] is True
     assert [entry["bits"] for entry in metadata["modules"]] == [5, 6]
     assert [entry["index"] for entry in metadata["modules"]] == [0, 1]
-    assert [entry["quantize_start_step"] for entry in metadata["modules"]] == [0, 4]
+    assert [entry["quantize_start_percent"] for entry in metadata["modules"]] == [None, 0.2]
+    assert [entry["resolved_quantize_start_step"] for entry in metadata["modules"]] == [0, 4]
 
 
 def test_scheduled_processor_dispatches_by_step_window() -> None:
@@ -180,6 +184,25 @@ def test_scheduled_processor_dispatches_by_step_window() -> None:
     step_state.current_step = 9
     assert processor(None, None) == "turbo"
     step_state.current_step = 10
+    assert processor(None, None) == "exact"
+
+
+def test_scheduled_processor_resolves_percent_window() -> None:
+    step_state = DenoisingStepState(current_step=5, total_steps=30)
+    processor = ScheduledTurboDAttnProcessor(
+        original_processor=_FakeProcessor("exact"),
+        turbo_processor=_FakeProcessor("turbo"),
+        step_state=step_state,
+        quantize_start_percent=0.2,
+        quantize_end_percent=0.5,
+    )
+
+    assert processor(None, None) == "exact"
+    step_state.current_step = 6
+    assert processor(None, None) == "turbo"
+    step_state.current_step = 14
+    assert processor(None, None) == "turbo"
+    step_state.current_step = 15
     assert processor(None, None) == "exact"
 
 

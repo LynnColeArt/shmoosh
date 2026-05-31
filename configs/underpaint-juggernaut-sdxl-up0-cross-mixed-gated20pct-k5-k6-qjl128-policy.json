@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "description": "Percentage-timestep-gated mixed K5/K6 Turbo-D policy for selected up_blocks.0 cross-attention modules in the local Underpaint Juggernaut SDXL checkpoint.",
+  "source": "docs/timestep-gating-2026-05-31.md",
+  "validation": {
+    "accepted_horizon_steps": [20, 30],
+    "prompt_count": 1,
+    "seed_count": 1,
+    "stress_check_count": 3,
+    "quantize_start_percent": 0.2,
+    "resolved_quantize_start_step_at_20": 4,
+    "resolved_quantize_start_step_at_30": 6,
+    "compass_20_step_512x512": {
+      "output_dir": "captures/image-ab-juggernaut-up0-cross-mixed-gated20pct-20step",
+      "mse": 0.00002114714152412489,
+      "mae": 0.0018699746578931808,
+      "psnr_db": 46.74748328250986
+    },
+    "compass_30_step_512x512": {
+      "output_dir": "captures/image-ab-juggernaut-up0-cross-mixed-gated20pct-30step",
+      "mse": 0.000026886327759712003,
+      "mae": 0.002365291817113757,
+      "psnr_db": 45.7046851137293
+    },
+    "compass_20_step_768x512": {
+      "output_dir": "captures/image-ab-juggernaut-up0-cross-mixed-gated20pct-768x512-20step",
+      "mse": 0.00011053312482545152,
+      "mae": 0.0033019420225173235,
+      "psnr_db": 39.56507552086673
+    },
+    "note": "Exact first 20% of denoising steps, then quantize the remaining steps. This is the horizon-scaled form of the gated20 mixed policy."
+  },
+  "selection_metric": {
+    "note": "Derived from the exact-first sweep where start step 4, or 20% of a 20-step horizon, rescued the failed ungated mixed policy."
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "turbo_policy": {
+    "bits": 5,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 128,
+    "codebook_samples": 20000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false
+  },
+  "quantized_modules": [
+    {
+      "index": 49,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn2",
+      "quantize_start_percent": 0.2
+    },
+    {
+      "index": 59,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.5.attn2",
+      "quantize_start_percent": 0.2
+    },
+    {
+      "index": 61,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.6.attn2",
+      "quantize_start_percent": 0.2
+    },
+    {
+      "index": 65,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.8.attn2",
+      "quantize_start_percent": 0.2
+    },
+    {
+      "index": 67,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.9.attn2",
+      "quantize_start_percent": 0.2
+    },
+    {
+      "index": 79,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.5.attn2",
+      "bits": 6,
+      "quantize_start_percent": 0.2
+    },
+    {
+      "index": 87,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.9.attn2",
+      "bits": 6,
+      "quantize_start_percent": 0.2
+    }
+  ],
+  "exact_modules": [
+    {
+      "index": 85,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.8.attn2",
+      "reason": "Failed combined K6 composition with modules 79 and 87."
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any
 
 from turbo_d.runtime_attention import torch_turbo_d_attention
@@ -19,6 +20,8 @@ class ScheduledTurboDAttnProcessor:
     step_state: DenoisingStepState
     quantize_start_step: int = 0
     quantize_end_step: int | None = None
+    quantize_start_percent: float | None = None
+    quantize_end_percent: float | None = None
 
     def __call__(
         self,
@@ -47,11 +50,27 @@ class ScheduledTurboDAttnProcessor:
 
     def _quantize_current_step(self) -> bool:
         step = self.step_state.current_step
-        if step < self.quantize_start_step:
+        if step < self._start_step():
             return False
-        if self.quantize_end_step is not None and step >= self.quantize_end_step:
+        end_step = self._end_step()
+        if end_step is not None and step >= end_step:
             return False
         return True
+
+    def _start_step(self) -> int:
+        if self.quantize_start_percent is None:
+            return self.quantize_start_step
+        return self._percent_to_step(self.quantize_start_percent)
+
+    def _end_step(self) -> int | None:
+        if self.quantize_end_percent is None:
+            return self.quantize_end_step
+        return self._percent_to_step(self.quantize_end_percent)
+
+    def _percent_to_step(self, percent: float) -> int:
+        if self.step_state.total_steps is None:
+            raise RuntimeError("percentage timestep windows require total_steps")
+        return math.ceil(self.step_state.total_steps * percent)
 
 
 @dataclass(frozen=True)
