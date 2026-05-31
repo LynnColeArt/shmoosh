@@ -71,6 +71,16 @@ def main() -> None:
     parser.add_argument("--codebook-samples", type=int, default=80_000)
     parser.add_argument("--processor-seed", type=int, default=11)
     parser.add_argument(
+        "--attention-backend",
+        choices=["reference", "packed"],
+        default="reference",
+    )
+    parser.add_argument(
+        "--packed-backend",
+        choices=["auto", "torch", "triton"],
+        default="auto",
+    )
+    parser.add_argument(
         "--exact-keys",
         action="store_true",
         help="Leave K exact and only quantize values if --quantize-values is set.",
@@ -167,6 +177,8 @@ def main() -> None:
                             key_bits=args.key_bits,
                             value_bits=args.value_bits,
                             codebook_samples=args.codebook_samples,
+                            attention_backend=args.attention_backend,
+                            packed_backend=args.packed_backend,
                         ),
                     )
                 )
@@ -195,6 +207,8 @@ def main() -> None:
                         key_bits=args.key_bits,
                         value_bits=args.value_bits,
                         codebook_samples=args.codebook_samples,
+                        attention_backend=args.attention_backend,
+                        packed_backend=args.packed_backend,
                     ),
                 )
             )
@@ -226,6 +240,8 @@ def main() -> None:
             "processor_seed": args.processor_seed,
             "quantize_keys": not args.exact_keys,
             "quantize_values": args.quantize_values,
+            "attention_backend": args.attention_backend,
+            "packed_backend": args.packed_backend,
         },
         "baseline": baseline_stats | {"image": str(baseline_path)},
         "suggested_policy": suggested_policy,
@@ -279,6 +295,8 @@ def _run_module_policy(
         "cross_attention_dim": module_meta["cross_attention_dim"],
         "quantize_keys": processor.quantize_keys,
         "quantize_values": processor.quantize_values,
+        "attention_backend": processor.attention_backend,
+        "packed_backend": processor.packed_backend,
         "bits": processor.bits,
         "key_bits": processor.key_bits,
         "value_bits": processor.value_bits,
@@ -314,6 +332,8 @@ def _run_module_policy(
             "processor_seed": processor.seed,
             "quantize_keys": processor.quantize_keys,
             "quantize_values": processor.quantize_values,
+            "attention_backend": processor.attention_backend,
+            "packed_backend": processor.packed_backend,
         },
         "baseline": baseline_stats,
         "shmoosh": shmoosh_stats,
@@ -370,6 +390,8 @@ def _suggest_policy(args: argparse.Namespace, rows: list[dict[str, Any]]) -> dic
             "processor_seed": args.processor_seed,
             "quantize_keys": not args.exact_keys,
             "quantize_values": args.quantize_values,
+            "attention_backend": args.attention_backend,
+            "packed_backend": args.packed_backend,
         },
         "quantized_modules": [_policy_module(row) for row in candidates],
         "exact_modules": [_policy_module(row) for row in exact],
@@ -408,6 +430,8 @@ def _write_summary(
         "cross_attention_dim",
         "quantize_keys",
         "quantize_values",
+        "attention_backend",
+        "packed_backend",
         "bits",
         "key_bits",
         "value_bits",

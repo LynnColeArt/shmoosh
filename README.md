@@ -343,3 +343,14 @@ uv run shmoosh-packed-attention-smoke \
   --qjl-bits 128 \
   --backend auto
 ```
+
+Use the packed attention path inside image A/B and policy-suite runs with:
+
+```bash
+--attention-backend packed --packed-backend auto
+```
+
+Policy files can also set `attention_backend` and `packed_backend` in
+`shmoosh_policy` or per-module overrides. The packed backend is currently only
+used for K-compression with exact V; value-quantized policies still use the
+reference path.

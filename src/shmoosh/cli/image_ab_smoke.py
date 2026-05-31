@@ -66,6 +66,18 @@ def main() -> None:
     parser.add_argument("--codebook-samples", type=int, default=80_000)
     parser.add_argument("--processor-seed", type=int, default=11)
     parser.add_argument(
+        "--attention-backend",
+        choices=["reference", "packed"],
+        default="reference",
+        help="Use the NumPy reference attention path or the packed-K exact-V path.",
+    )
+    parser.add_argument(
+        "--packed-backend",
+        choices=["auto", "torch", "triton"],
+        default="auto",
+        help="Packed score backend when --attention-backend=packed.",
+    )
+    parser.add_argument(
         "--exact-keys",
         action="store_true",
         help="Leave K exact and only quantize values if --quantize-values is set.",
@@ -381,6 +393,8 @@ def _processor_config(
         "key_bits": args.key_bits,
         "value_bits": args.value_bits,
         "codebook_samples": args.codebook_samples,
+        "attention_backend": args.attention_backend,
+        "packed_backend": args.packed_backend,
     }
     if policy is None:
         return config
@@ -404,6 +418,8 @@ def _apply_processor_overrides(config: dict[str, Any], overrides: Any) -> None:
         ("key_bits", "key_bits"),
         ("value_bits", "value_bits"),
         ("codebook_samples", "codebook_samples"),
+        ("attention_backend", "attention_backend"),
+        ("packed_backend", "packed_backend"),
     ):
         if source_key in overrides:
             config[target_key] = overrides[source_key]
@@ -494,6 +510,8 @@ def _processor_metadata(config: dict[str, Any]) -> dict[str, Any]:
         "processor_seed": config["seed"],
         "quantize_keys": config["quantize_keys"],
         "quantize_values": config["quantize_values"],
+        "attention_backend": config["attention_backend"],
+        "packed_backend": config["packed_backend"],
     }
 
 

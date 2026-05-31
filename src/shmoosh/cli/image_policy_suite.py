@@ -63,6 +63,16 @@ def main() -> None:
     parser.add_argument("--qjl-bits", type=int, default=128)
     parser.add_argument("--codebook-samples", type=int, default=80_000)
     parser.add_argument("--processor-seed", type=int, default=11)
+    parser.add_argument(
+        "--attention-backend",
+        choices=["reference", "packed"],
+        default="reference",
+    )
+    parser.add_argument(
+        "--packed-backend",
+        choices=["auto", "torch", "triton"],
+        default="auto",
+    )
     parser.add_argument("--exact-keys", action="store_true")
     parser.add_argument("--quantize-values", action="store_true")
     args = parser.parse_args()

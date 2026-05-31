@@ -210,6 +210,33 @@ research line: packed K, exact V, softmax, and attention output. It is still not
 a Diffusers replacement because masks, layout integration, and output projection
 plumbing remain outside this primitive.
 
+## Diffusers Processor Hook
+
+`ShmooshAttnProcessor` can now opt into the packed attention primitive:
+
+```text
+attention_backend = "reference" | "packed"
+packed_backend = "auto" | "torch" | "triton"
+```
+
+The packed processor path activates only when the resolved policy is
+`quantize_keys=true` and `quantize_values=false`. Other policies keep using the
+reference path so value quantization and exact-key calibration behavior stay
+unchanged.
+
+The image CLIs expose the same knobs:
+
+```bash
+uv run shmoosh-image-ab-smoke ... \
+  --attention-backend packed \
+  --packed-backend auto
+```
+
+Policy files can also set those fields at top level inside `shmoosh_policy` or
+inside a per-module `shmoosh_policy` override. This lets the accepted 1024
+policy run through the packed-K exact-V path without changing the policy module
+selection or timestep window semantics.
+
 ## Kernel Direction
 
 The simplest production path is a two-stage Torch/Triton design:

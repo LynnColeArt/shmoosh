@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import math
 from typing import Any
 
+from shmoosh.packed_attention import encode_and_attention_output
 from shmoosh.runtime_attention import torch_shmoosh_attention
 
 
@@ -75,12 +76,11 @@ class ScheduledShmooshAttnProcessor:
 
 @dataclass(frozen=True)
 class ShmooshAttnProcessor:
-    """Slow Diffusers attention processor backed by the Shmoosh reference codec.
+    """Diffusers attention processor backed by Shmoosh attention paths.
 
-    This processor is for behavioral experiments only. It leaves projections and
-    output layers in Torch/Diffusers, but computes attention itself through the
-    NumPy reference codec. A production path would need fused Torch/Triton/CUDA
-    kernels and packed codes.
+    The default backend is the NumPy reference codec used for behavioral
+    experiments. `attention_backend="packed"` routes K-only/exact-V policies
+    through the Torch/Triton packed-key attention primitive.
     """
 
     bits: int = 3
@@ -92,12 +92,18 @@ class ShmooshAttnProcessor:
     value_bits: int | None = None
     codebook_samples: int = 80_000
     fallback_on_mask: bool = True
+    attention_backend: str = "reference"
+    packed_backend: str = "auto"
 
     def __post_init__(self) -> None:
         if self.bits <= 0:
             raise ValueError("bits must be positive")
         if self.qjl_bits < 0:
             raise ValueError("qjl_bits must be non-negative")
+        if self.attention_backend not in {"reference", "packed"}:
+            raise ValueError("attention_backend must be one of: reference, packed")
+        if self.packed_backend not in {"auto", "torch", "triton"}:
+            raise ValueError("packed_backend must be one of: auto, torch, triton")
 
     def __call__(
         self,
@@ -155,19 +161,31 @@ class ShmooshAttnProcessor:
         if attn.norm_k is not None:
             key = attn.norm_k(key)
 
-        hidden_states = torch_shmoosh_attention(
-            query,
-            key,
-            value,
-            bits=self.bits,
-            qjl_bits=self.qjl_bits,
-            seed=self.seed,
-            quantize_keys=self.quantize_keys,
-            quantize_values=self.quantize_values,
-            key_bits=self.key_bits,
-            value_bits=self.value_bits,
-            codebook_samples=self.codebook_samples,
-        )
+        if self._use_packed_attention():
+            hidden_states = encode_and_attention_output(
+                query,
+                key,
+                value,
+                bits=self.key_bits or self.bits,
+                qjl_bits=self.qjl_bits,
+                seed=self.seed,
+                backend=self.packed_backend,
+                codebook_samples=self.codebook_samples,
+            )
+        else:
+            hidden_states = torch_shmoosh_attention(
+                query,
+                key,
+                value,
+                bits=self.bits,
+                qjl_bits=self.qjl_bits,
+                seed=self.seed,
+                quantize_keys=self.quantize_keys,
+                quantize_values=self.quantize_values,
+                key_bits=self.key_bits,
+                value_bits=self.value_bits,
+                codebook_samples=self.codebook_samples,
+            )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
@@ -184,6 +202,13 @@ class ShmooshAttnProcessor:
         hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
+
+    def _use_packed_attention(self) -> bool:
+        return (
+            self.attention_backend == "packed"
+            and self.quantize_keys
+            and not self.quantize_values
+        )
 
 
 def _sdpa_processor():

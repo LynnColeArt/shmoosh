@@ -47,6 +47,8 @@ def test_policy_processor_config_overrides_cli_defaults() -> None:
         key_bits=None,
         value_bits=5,
         codebook_samples=100,
+        attention_backend="reference",
+        packed_backend="auto",
         steps=20,
     )
     policy = {
@@ -59,6 +61,8 @@ def test_policy_processor_config_overrides_cli_defaults() -> None:
             "key_bits": None,
             "value_bits": None,
             "codebook_samples": 20000,
+            "attention_backend": "packed",
+            "packed_backend": "triton",
         }
     }
 
@@ -71,6 +75,8 @@ def test_policy_processor_config_overrides_cli_defaults() -> None:
         "key_bits": None,
         "value_bits": None,
         "codebook_samples": 20000,
+        "attention_backend": "packed",
+        "packed_backend": "triton",
     }
 
 
@@ -84,6 +90,8 @@ def test_module_policy_can_override_processor_config() -> None:
         key_bits=None,
         value_bits=5,
         codebook_samples=100,
+        attention_backend="reference",
+        packed_backend="auto",
         steps=20,
     )
     policy = {
@@ -114,6 +122,8 @@ def test_module_policy_can_override_processor_config() -> None:
         "key_bits": None,
         "value_bits": None,
         "codebook_samples": 20000,
+        "attention_backend": "reference",
+        "packed_backend": "auto",
     }
 
 
@@ -127,6 +137,8 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
         key_bits=None,
         value_bits=5,
         codebook_samples=100,
+        attention_backend="reference",
+        packed_backend="auto",
         steps=20,
     )
     first = object()
@@ -145,6 +157,8 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
             "key_bits": None,
             "value_bits": None,
             "codebook_samples": 20000,
+            "attention_backend": "packed",
+            "packed_backend": "auto",
         },
         "quantized_modules": [
             {
@@ -154,6 +168,7 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
                 "name": "b.attn2",
                 "bits": 6,
                 "quantize_start_percent": 0.2,
+                "packed_backend": "torch",
             },
         ],
     }
@@ -163,6 +178,8 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
 
     assert metadata["mixed"] is True
     assert [entry["bits"] for entry in metadata["modules"]] == [5, 6]
+    assert [entry["attention_backend"] for entry in metadata["modules"]] == ["packed", "packed"]
+    assert [entry["packed_backend"] for entry in metadata["modules"]] == ["auto", "torch"]
     assert [entry["index"] for entry in metadata["modules"]] == [0, 1]
     assert [entry["quantize_start_percent"] for entry in metadata["modules"]] == [None, 0.2]
     assert [entry["resolved_quantize_start_step"] for entry in metadata["modules"]] == [0, 4]
