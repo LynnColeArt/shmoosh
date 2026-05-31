@@ -88,8 +88,9 @@ but the generation does not collapse.
 
 ## Next Slice
 
-1. Test K4/K5 on module 49 at 20 steps.
-2. Add timestep gating so module 49 can stay exact on fragile early steps.
+1. Verify `configs/underpaint-juggernaut-sdxl-k5-qjl128-policy.json` through
+   `--policy-file` at 20 steps.
+2. Test the K5 policy on additional prompts/seeds.
 3. Expand the sweep over more up-block modules before touching down-block
    attention broadly.
 4. After a stable image policy emerges, replace the NumPy processor with a

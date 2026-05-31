@@ -209,3 +209,8 @@ remained acceptable at 12 steps (`psnr=31.49 dB`), but the same K3 policy caused
 large composition drift at 20 steps (`psnr=22.70 dB`). The 20-step exact
 processor calibration was much closer (`psnr=34.16 dB`), so the long-run drift
 comes from key compression rather than merely replacing the attention processor.
+
+The focused precision sweep in `docs/precision-sweep-2026-05-31.md` found that
+K4 still drifted at 20 steps (`psnr=25.10 dB`), while K5 recovered most of the
+exact-processor behavior (`psnr=32.95 dB`). The first 20-step candidate policy
+is `configs/underpaint-juggernaut-sdxl-k5-qjl128-policy.json`.

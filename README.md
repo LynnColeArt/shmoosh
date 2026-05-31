@@ -159,6 +159,23 @@ uv run turbo-d-image-ab-smoke \
   --output-dir captures/image-ab-juggernaut-policy49-12step
 ```
 
+For 20-step image tests, use the K5 candidate policy:
+
+```bash
+uv run turbo-d-image-ab-smoke \
+  --single-file /home/lynn/.underpaint/models/checkpoints/juggernaut-x-v10/Juggernaut-X-RunDiffusion-NSFW.safetensors \
+  --pipeline-class sdxl \
+  --config /home/lynn/.cache/huggingface/hub/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b \
+  --prompt "a restored archival photo of a brass compass on a workbench" \
+  --steps 20 \
+  --height 512 \
+  --width 512 \
+  --policy-file configs/underpaint-juggernaut-sdxl-k5-qjl128-policy.json \
+  --model-cpu-offload \
+  --local-files-only \
+  --output-dir captures/image-ab-juggernaut-policy49-k5-20step
+```
+
 ## GPU Target
 
 The practical target is the 10-12GB VRAM band:

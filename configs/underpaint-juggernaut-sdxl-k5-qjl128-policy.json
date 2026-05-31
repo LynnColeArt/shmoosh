@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "description": "First 20-step Turbo-D candidate policy for the local Underpaint Juggernaut SDXL checkpoint.",
+  "source": "docs/precision-sweep-2026-05-31.md",
+  "validation": {
+    "accepted_horizon_steps": 20,
+    "prompt_count": 1,
+    "seed_count": 1,
+    "note": "Module 49 with K5 + QJL-128 + exact V preserved the 20-step image structure in the first focused precision sweep. Treat this as a seed candidate, not a broad SDXL policy."
+  },
+  "selection_metric": {
+    "candidate_psnr_db": 30.0,
+    "note": "Image PSNR is a coarse first-pass gate; visually inspect candidates before broadening policy."
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "turbo_policy": {
+    "bits": 5,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 128,
+    "codebook_samples": 20000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false
+  },
+  "quantized_modules": [
+    {
+      "index": 49,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn2",
+      "mse": 0.0005073774955235422,
+      "mae": 0.010858791880309582,
+      "psnr_db": 32.9466879960284
+    }
+  ],
+  "exact_modules": [
+    {
+      "index": 8,
+      "name": "down_blocks.2.attentions.0.transformer_blocks.0.attn1",
+      "source": "configs/underpaint-juggernaut-sdxl-k3-qjl128-policy.json"
+    },
+    {
+      "index": 9,
+      "name": "down_blocks.2.attentions.0.transformer_blocks.0.attn2",
+      "source": "configs/underpaint-juggernaut-sdxl-k3-qjl128-policy.json"
+    },
+    {
+      "index": 48,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn1",
+      "source": "configs/underpaint-juggernaut-sdxl-k3-qjl128-policy.json"
+    }
+  ],
+  "rejected_precision_trials": [
+    {
+      "module_index": 49,
+      "bits": 3,
+      "mse": 0.00537459971383214,
+      "mae": 0.041978489607572556,
+      "psnr_db": 22.696538753281477
+    },
+    {
+      "module_index": 49,
+      "bits": 4,
+      "mse": 0.003091255435720086,
+      "mae": 0.03192300722002983,
+      "psnr_db": 25.09865106958616
+    }
+  ]
+}
