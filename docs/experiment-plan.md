@@ -81,7 +81,8 @@ Runtime path:
 
 - start with a slow behavioral attention processor;
 - use active-row metrics for cross-attention because classifier-free guidance can create zero-norm rows;
-- test K-only or higher-precision V variants before full K/V compression;
+- start image tests with K-only compression: `K3 + QJL-128 + exact V`;
+- test higher-precision V variants after K-only, because K3/V5 still trailed K-only on captured-tensor output metrics;
 - avoid full dequantization where possible;
 - move hot loops to Triton only after profiling;
 - benchmark against xFormers/SDPA/FlashAttention where available.

@@ -149,3 +149,40 @@ active_output_cosine_error=0.00498536 active_rows=10240/20480
 ```
 
 The cross-attention raw cosine value is misleading because half the rows in that capture have zero-norm reference outputs, likely from the unconditional half of classifier-free guidance. Filtering to active rows shows a small cosine error. Exact V improves MSE substantially, so early runtime policies should test K-only or higher-precision V variants before compressing V as aggressively as K.
+
+## K/V Runtime Policy Sweep
+
+Runtime-style policy command:
+
+```bash
+uv run turbo-d-policy-sweep captures/underpaint-juggernaut-sweep \
+  --policies k_only,v_only,kv \
+  --bits 3 \
+  --qjl-bits 128 \
+  --codebook-samples 80000 \
+  --csv captures/underpaint-juggernaut-sweep/policy_sweep.csv \
+  --json captures/underpaint-juggernaut-sweep/policy_sweep.json
+```
+
+Mean output metrics over the 30-capture fixture:
+
+| Policy | K Bits | V Bits | Mean MSE | Mean Active Cosine Error |
+| --- | ---: | ---: | ---: | ---: |
+| K-only | 3 | exact | 0.00103543 | 0.00271623 |
+| V-only | exact | 3 | 0.00155107 | 0.00870124 |
+| K/V | 3 | 3 | 0.00256393 | 0.01136582 |
+| V-only | exact | 4 | 0.00040175 | 0.00234521 |
+| K/V | 3 | 4 | 0.00143154 | 0.00505935 |
+| V-only | exact | 5 | 0.00011942 | 0.00068766 |
+| K/V | 3 | 5 | 0.00115048 | 0.00340044 |
+
+By attention kind, K-only is especially strong for cross-attention:
+
+| Policy | Kind | Mean MSE | Mean Active Cosine Error |
+| --- | --- | ---: | ---: |
+| K-only | self-attn | 0.00195509 | 0.00325901 |
+| K-only | cross-attn | 0.00011578 | 0.00217346 |
+| K/V 3/5 | self-attn | 0.00214272 | 0.00351473 |
+| K/V 3/5 | cross-attn | 0.00015824 | 0.00328615 |
+
+Interpretation: on this fixture, key compression with QJL-128 causes less output drift than value compression. Raising V precision helps, but even K3/V5 trails K-only. The first image-generation prototype should therefore start with `K3 + QJL-128 + exact V`, then test whether V4/V5 is acceptable later.

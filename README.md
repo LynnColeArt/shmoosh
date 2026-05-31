@@ -75,6 +75,15 @@ uv run turbo-d-sweep-captures captures/underpaint-juggernaut \
   --qjl-bits 0,128
 ```
 
+Sweep runtime K/V policies:
+
+```bash
+uv run turbo-d-policy-sweep captures/underpaint-juggernaut \
+  --policies k_only,v_only,kv \
+  --bits 3 \
+  --qjl-bits 128
+```
+
 Run the runtime-style attention smoke:
 
 ```bash

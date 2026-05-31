@@ -18,7 +18,10 @@ class TurboDAttnProcessor:
     bits: int = 3
     qjl_bits: int = 128
     seed: int = 11
+    quantize_keys: bool = True
     quantize_values: bool = True
+    key_bits: int | None = None
+    value_bits: int | None = None
     codebook_samples: int = 80_000
     fallback_on_mask: bool = True
 
@@ -91,7 +94,10 @@ class TurboDAttnProcessor:
             bits=self.bits,
             qjl_bits=self.qjl_bits,
             seed=self.seed,
+            quantize_keys=self.quantize_keys,
             quantize_values=self.quantize_values,
+            key_bits=self.key_bits,
+            value_bits=self.value_bits,
             codebook_samples=self.codebook_samples,
         )
 

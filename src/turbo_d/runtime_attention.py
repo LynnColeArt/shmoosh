@@ -15,7 +15,10 @@ def turbo_d_attention_output(
     bits: int,
     qjl_bits: int,
     seed: int,
+    quantize_keys: bool = True,
     quantize_values: bool = True,
+    key_bits: int | None = None,
+    value_bits: int | None = None,
     codebook_samples: int = 80_000,
     lloyd_iters: int = 80,
 ) -> np.ndarray:
@@ -36,20 +39,42 @@ def turbo_d_attention_output(
     if q.shape[-1] != k.shape[-1]:
         raise ValueError("q and k must share the same head dimension")
 
-    codec = TurboDCodec(
-        dim=q.shape[-1],
-        bits=bits,
-        qjl_bits=qjl_bits,
-        seed=seed,
-        codebook_samples=codebook_samples,
-        lloyd_iters=lloyd_iters,
-    )
-    encoded_k = codec.encode(k)
-    decoded_v = codec.decode(codec.encode(v)) if quantize_values else v
+    key_bits = bits if key_bits is None else key_bits
+    value_bits = bits if value_bits is None else value_bits
+
+    key_codec = None
+    encoded_k = None
+    if quantize_keys:
+        key_codec = TurboDCodec(
+            dim=q.shape[-1],
+            bits=key_bits,
+            qjl_bits=qjl_bits,
+            seed=seed,
+            codebook_samples=codebook_samples,
+            lloyd_iters=lloyd_iters,
+        )
+        encoded_k = key_codec.encode(k)
+
+    if quantize_values:
+        value_codec = TurboDCodec(
+            dim=v.shape[-1],
+            bits=value_bits,
+            qjl_bits=0,
+            seed=seed + 10_000,
+            codebook_samples=codebook_samples,
+            lloyd_iters=lloyd_iters,
+        )
+        decoded_v = value_codec.decode(value_codec.encode(v))
+    else:
+        decoded_v = v
+
     output = np.empty_like(q, dtype=np.float32)
 
     for head in range(q.shape[0]):
-        scores = codec.estimate_dot(q[head], _slice_encoded(encoded_k, head))
+        if encoded_k is not None and key_codec is not None:
+            scores = key_codec.estimate_dot(q[head], _slice_encoded(encoded_k, head))
+        else:
+            scores = q[head] @ k[head].T
         weights = _softmax(scores / sqrt(q.shape[-1]))
         output[head] = weights @ decoded_v[head]
 
@@ -73,7 +98,10 @@ def torch_turbo_d_attention(
     bits: int,
     qjl_bits: int,
     seed: int,
+    quantize_keys: bool = True,
     quantize_values: bool = True,
+    key_bits: int | None = None,
+    value_bits: int | None = None,
     codebook_samples: int = 80_000,
 ):
     """Torch wrapper for the NumPy reference attention path.
@@ -112,7 +140,10 @@ def torch_turbo_d_attention(
         bits=bits,
         qjl_bits=qjl_bits,
         seed=seed,
+        quantize_keys=quantize_keys,
         quantize_values=quantize_values,
+        key_bits=key_bits,
+        value_bits=value_bits,
         codebook_samples=codebook_samples,
     )
 

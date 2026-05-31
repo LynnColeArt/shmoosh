@@ -13,8 +13,15 @@ def main() -> None:
     )
     parser.add_argument("capture", help="Capture .npz containing q, k, and v.")
     parser.add_argument("--bits", type=int, default=3)
+    parser.add_argument("--key-bits", type=int)
+    parser.add_argument("--value-bits", type=int)
     parser.add_argument("--qjl-bits", type=int, default=128)
     parser.add_argument("--seed", type=int, default=11)
+    parser.add_argument(
+        "--exact-keys",
+        action="store_true",
+        help="Use exact K tensors and only quantize V if values are enabled.",
+    )
     parser.add_argument(
         "--exact-values",
         action="store_true",
@@ -32,14 +39,21 @@ def main() -> None:
         bits=args.bits,
         qjl_bits=args.qjl_bits,
         seed=args.seed,
+        quantize_keys=not args.exact_keys,
         quantize_values=not args.exact_values,
+        key_bits=args.key_bits,
+        value_bits=args.value_bits,
         codebook_samples=args.codebook_samples,
     )
 
     print("Turbo-D runtime attention smoke")
     print(f"capture={args.capture}")
     print(f"shape q={q.shape} k={k.shape} v={v.shape}")
-    print(f"bits={args.bits} qjl_bits={args.qjl_bits} seed={args.seed}")
+    print(
+        f"bits={args.bits} key_bits={args.key_bits or args.bits} "
+        f"value_bits={args.value_bits or args.bits} qjl_bits={args.qjl_bits} seed={args.seed}"
+    )
+    print(f"quantize_keys={not args.exact_keys}")
     print(f"quantize_values={not args.exact_values}")
     print(f"output_mse={mse(reference, turbo):.8g}")
     print(f"output_cosine_error={cosine_error(reference, turbo):.8g}")
