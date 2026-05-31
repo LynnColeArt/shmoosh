@@ -2,6 +2,11 @@
   "schema_version": 1,
   "description": "First-pass Turbo-D candidate policy for the local Underpaint Juggernaut SDXL checkpoint.",
   "source": "docs/image-module-sweep-2026-05-31.md",
+  "validation": {
+    "accepted_horizon_steps": 12,
+    "not_accepted_horizon_steps": 20,
+    "note": "Module 49 stayed above 30 dB PSNR at 12 steps, but the same K3 policy caused large composition drift at 20 steps. Treat this as a short-horizon candidate until timestep-aware policy exists."
+  },
   "selection_metric": {
     "candidate_psnr_db": 30.0,
     "note": "Image PSNR is a coarse first-pass gate; visually inspect candidates before broadening policy."

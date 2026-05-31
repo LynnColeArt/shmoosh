@@ -30,6 +30,10 @@ def main() -> None:
     parser.add_argument("--prompt")
     parser.add_argument("--negative-prompt")
     parser.add_argument("--output-dir", default="captures/image-ab-smoke")
+    parser.add_argument(
+        "--policy-file",
+        help="Optional JSON policy file with quantized_modules and turbo_policy.",
+    )
     parser.add_argument("--component", choices=["auto", "transformer", "unet"], default="auto")
     parser.add_argument("--module-filter", default="")
     parser.add_argument(
@@ -85,7 +89,14 @@ def main() -> None:
         _print_modules(all_modules)
         return
 
-    modules = _select_attention_modules(all_modules, args=args)
+    policy = _load_policy(args.policy_file)
+    if policy is not None and (args.module_indices or args.module_names):
+        raise SystemExit("Use either --policy-file or explicit module selection, not both.")
+    modules = (
+        _select_policy_modules(all_modules, policy=policy)
+        if policy is not None
+        else _select_attention_modules(all_modules, args=args)
+    )
     if not modules:
         raise RuntimeError("no attention-like modules with to_q/to_k/to_v were found")
 
@@ -104,16 +115,8 @@ def main() -> None:
         label="baseline",
     )
 
-    processor = TurboDAttnProcessor(
-        bits=args.bits,
-        qjl_bits=args.qjl_bits,
-        seed=args.processor_seed,
-        quantize_keys=not args.exact_keys,
-        quantize_values=args.quantize_values,
-        key_bits=args.key_bits,
-        value_bits=args.value_bits,
-        codebook_samples=args.codebook_samples,
-    )
+    processor_config = _processor_config(args, policy=policy)
+    processor = TurboDAttnProcessor(**processor_config)
     _install_processor(modules, processor)
 
     turbo_image, turbo_stats = _run_image(
@@ -148,17 +151,10 @@ def main() -> None:
         "device": args.device,
         "dtype": args.dtype,
         "model_cpu_offload": args.model_cpu_offload,
+        "policy_file": args.policy_file,
         "selected_modules": _module_metadata(all_modules, modules),
-        "processor": {
-            "bits": args.bits,
-            "key_bits": args.key_bits,
-            "value_bits": args.value_bits,
-            "qjl_bits": args.qjl_bits,
-            "codebook_samples": args.codebook_samples,
-            "processor_seed": args.processor_seed,
-            "quantize_keys": not args.exact_keys,
-            "quantize_values": args.quantize_values,
-        },
+        "processor": _processor_metadata(processor_config),
+        "policy": policy,
         "baseline": baseline_stats,
         "turbo": turbo_stats,
         "image_metrics": image_metrics,
@@ -276,6 +272,9 @@ def _list_attention_modules(component: Any, *, module_filter: str) -> list[tuple
 def _select_attention_modules(
     modules: list[tuple[str, Any]], *, args: argparse.Namespace
 ) -> list[tuple[str, Any]]:
+    if getattr(args, "policy_file", None) and (args.module_indices or args.module_names):
+        raise SystemExit("Use either --policy-file or explicit module selection, not both.")
+
     if args.module_indices and args.module_names:
         raise SystemExit("Use either --module-indices or --module-names, not both.")
 
@@ -297,6 +296,86 @@ def _select_attention_modules(
         return selected
 
     return modules[: args.max_modules]
+
+
+def _load_policy(path: str | None) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    policy_path = Path(path)
+    try:
+        return json.loads(policy_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise SystemExit(f"could not read --policy-file {path}: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"could not parse --policy-file {path}: {exc}") from exc
+
+
+def _select_policy_modules(
+    modules: list[tuple[str, Any]], *, policy: dict[str, Any]
+) -> list[tuple[str, Any]]:
+    by_name = {name: module for name, module in modules}
+    selected = []
+    for entry in policy.get("quantized_modules", []):
+        name = entry.get("name")
+        if name is not None:
+            if name not in by_name:
+                raise SystemExit(f"policy module name not found: {name}")
+            selected.append((name, by_name[name]))
+            continue
+
+        index = entry.get("index")
+        if index is None:
+            raise SystemExit("policy entries need either name or index")
+        if index < 0 or index >= len(modules):
+            raise SystemExit(f"policy module index {index} is out of range")
+        selected.append(modules[index])
+
+    return selected
+
+
+def _processor_config(
+    args: argparse.Namespace, *, policy: dict[str, Any] | None
+) -> dict[str, Any]:
+    config = {
+        "bits": args.bits,
+        "qjl_bits": args.qjl_bits,
+        "seed": args.processor_seed,
+        "quantize_keys": not args.exact_keys,
+        "quantize_values": args.quantize_values,
+        "key_bits": args.key_bits,
+        "value_bits": args.value_bits,
+        "codebook_samples": args.codebook_samples,
+    }
+    if policy is None:
+        return config
+
+    policy_config = policy.get("turbo_policy", {})
+    for source_key, target_key in (
+        ("bits", "bits"),
+        ("qjl_bits", "qjl_bits"),
+        ("processor_seed", "seed"),
+        ("quantize_keys", "quantize_keys"),
+        ("quantize_values", "quantize_values"),
+        ("key_bits", "key_bits"),
+        ("value_bits", "value_bits"),
+        ("codebook_samples", "codebook_samples"),
+    ):
+        if source_key in policy_config:
+            config[target_key] = policy_config[source_key]
+    return config
+
+
+def _processor_metadata(config: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "bits": config["bits"],
+        "key_bits": config["key_bits"],
+        "value_bits": config["value_bits"],
+        "qjl_bits": config["qjl_bits"],
+        "codebook_samples": config["codebook_samples"],
+        "processor_seed": config["seed"],
+        "quantize_keys": config["quantize_keys"],
+        "quantize_values": config["quantize_values"],
+    }
 
 
 def _parse_indices(raw: str) -> list[int]:

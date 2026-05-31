@@ -203,3 +203,9 @@ In a four-module probe, up-block cross-attention module 49 had the lowest image
 delta (`mse=0.00049776`, `psnr=33.03 dB`), while down-block cross-attention
 module 9 had the largest delta (`mse=0.00173393`, `psnr=27.61 dB`). The first
 tracked seed policy is `configs/underpaint-juggernaut-sdxl-k3-qjl128-policy.json`.
+
+Policy A/B results are recorded in `docs/policy-ab-2026-05-31.md`. Module 49
+remained acceptable at 12 steps (`psnr=31.49 dB`), but the same K3 policy caused
+large composition drift at 20 steps (`psnr=22.70 dB`). The 20-step exact
+processor calibration was much closer (`psnr=34.16 dB`), so the long-run drift
+comes from key compression rather than merely replacing the attention processor.

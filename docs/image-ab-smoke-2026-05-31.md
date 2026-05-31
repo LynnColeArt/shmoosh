@@ -88,9 +88,8 @@ but the generation does not collapse.
 
 ## Next Slice
 
-1. Consume `configs/underpaint-juggernaut-sdxl-k3-qjl128-policy.json` from the
-   image A/B harness.
-2. Run a 12-20 step A/B with the current candidate module enabled.
+1. Test K4/K5 on module 49 at 20 steps.
+2. Add timestep gating so module 49 can stay exact on fragile early steps.
 3. Expand the sweep over more up-block modules before touching down-block
    attention broadly.
 4. After a stable image policy emerges, replace the NumPy processor with a

@@ -81,8 +81,7 @@ codes. The image deltas are meaningful as a policy search signal.
 
 ## Next Slice
 
-1. Teach the image A/B harness to consume the policy file and run all candidate
-   modules together.
-2. Run a 12-20 step image A/B with module 49 enabled.
+1. Test K4/K5 on module 49 at 20 steps.
+2. Add timestep gating so module 49 can stay exact on fragile early steps.
 3. Expand the sweep over more up-block modules before touching down-block
    attention broadly.
