@@ -127,7 +127,13 @@ depends on packed K storage and a fused attention path.
 
 ## Next Slice
 
-1. Start the packed-K design note around the accepted 1024 policy.
-2. Estimate memory-bandwidth savings for the seven selected cross-attention
-   modules under packed K5/K6 plus QJL-128.
-3. Prototype a Torch-side packed-key metadata format before attempting kernels.
+Packed-K design is recorded in `docs/packed-k-design-2026-05-31.md`. Under SDXL
+cross-attention assumptions, the accepted policy has a `1.93x` packed-key ratio
+during quantized steps and saves `26.65 MiB` of selected-key payload across a
+30-step horizon.
+
+Next:
+
+1. Prototype a Torch-side packed-key metadata object.
+2. Add a debug decode path that matches the NumPy reference codec.
+3. Use that container as the contract for a later fused score kernel.

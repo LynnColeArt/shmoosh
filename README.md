@@ -280,3 +280,17 @@ The first real diffusion benchmark should answer one question before anything el
 > Can attention-only Turbo-D reduce memory bandwidth or VRAM pressure without visibly destabilizing same-seed generation?
 
 If the answer is yes, the next step is a fused Torch/Triton attention path.
+
+Estimate the packed-key storage target for the accepted 1024 policy:
+
+```bash
+uv run turbo-d-packed-policy-estimate \
+  --policy-file configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated30pct-k5-k6-qjl128-policy.json \
+  --steps 20 \
+  --steps 30
+```
+
+With SDXL cross-attention assumptions, the selected modules save `1.27 MiB` of
+key payload per quantized step (`1.93x` packed-key ratio). Across the validated
+30-step horizon, that is `26.65 MiB` of selected-key payload; see
+`docs/packed-k-design-2026-05-31.md`.
