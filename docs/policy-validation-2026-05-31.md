@@ -137,9 +137,38 @@ max_mse=0.00005419
 This is the first clear mixed-precision signal: one nearby up-block group has a
 K5 candidate, while this group needs K6 for safe composition.
 
+## Mixed Bridge Policy
+
+Per-module precision support enabled a cross-group bridge policy:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-cross-mixed-bridge-k5-k6-qjl128-policy.json
+```
+
+It enables module `67` at K5 and module `87` at K6. Larger mixed policies did
+not compose on the compass prompt, but this bridge validated across the
+three-case suite:
+
+| Case | Seed | MSE | MAE | PSNR |
+| --- | ---: | ---: | ---: | ---: |
+| reading-nook-seed1 | 1 | 0.00016397 | 0.00631037 | 37.85 dB |
+| maple-leaf-seed2 | 2 | 0.00006172 | 0.00346452 | 42.10 dB |
+| misty-lake-seed3 | 3 | 0.00000933 | 0.00092828 | 50.30 dB |
+
+Aggregate over the three additional cases:
+
+```text
+mean_psnr=43.42 dB
+min_psnr=37.85 dB
+max_mse=0.00016397
+```
+
+The mixed bridge confirms the code path and reveals the next missing policy
+axis: timestep windows.
+
 ## Next Slice
 
-1. Add per-module precision support to policy loading.
-2. Test one mixed policy covering both up-block groups.
+1. Add timestep-window support to policy entries.
+2. Re-test larger mixed policies with early-step exact fallback.
 3. Start a production-path design note for packed key storage and a Torch/Triton
-   attention kernel.
+   attention kernel once the policy surface stops shifting.

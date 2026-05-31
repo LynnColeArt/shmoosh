@@ -220,6 +220,18 @@ A/B with `psnr=42.50 dB` and the three-case validation suite with
 `min_psnr=42.66 dB` and `mean_psnr=47.24 dB`; see
 `docs/up-cross-attn1-sweep-2026-05-31.md`.
 
+Policy files can now override processor precision per module. The first mixed
+bridge policy is:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-cross-mixed-bridge-k5-k6-qjl128-policy.json
+```
+
+It enables module `67` at K5 and module `87` at K6. Larger mixed policies did
+not compose, but this bridge cleared the 20-step compass A/B with
+`psnr=42.08 dB` and the three-case validation suite with `min_psnr=37.85 dB`;
+see `docs/mixed-policy-2026-05-31.md`.
+
 ## GPU Target
 
 The practical target is the 10-12GB VRAM band:

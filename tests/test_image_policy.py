@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from argparse import Namespace
 
-from turbo_d.cli.image_ab_smoke import _processor_config, _select_policy_modules
+from turbo_d.cli.image_ab_smoke import (
+    _policy_processor_metadata,
+    _processor_config,
+    _select_policy_module_entries,
+    _select_policy_modules,
+)
 from turbo_d.cli.image_policy_suite import _cases_from_payload
 
 
@@ -57,6 +62,95 @@ def test_policy_processor_config_overrides_cli_defaults() -> None:
         "value_bits": None,
         "codebook_samples": 20000,
     }
+
+
+def test_module_policy_can_override_processor_config() -> None:
+    args = Namespace(
+        bits=4,
+        qjl_bits=0,
+        processor_seed=3,
+        exact_keys=True,
+        quantize_values=True,
+        key_bits=None,
+        value_bits=5,
+        codebook_samples=100,
+    )
+    policy = {
+        "turbo_policy": {
+            "bits": 5,
+            "qjl_bits": 128,
+            "processor_seed": 11,
+            "quantize_keys": True,
+            "quantize_values": False,
+            "key_bits": None,
+            "value_bits": None,
+            "codebook_samples": 20000,
+        }
+    }
+    module_entry = {
+        "bits": 6,
+        "turbo_policy": {
+            "qjl_bits": 256,
+        },
+    }
+
+    assert _processor_config(args, policy=policy, module_entry=module_entry) == {
+        "bits": 6,
+        "qjl_bits": 256,
+        "seed": 11,
+        "quantize_keys": True,
+        "quantize_values": False,
+        "key_bits": None,
+        "value_bits": None,
+        "codebook_samples": 20000,
+    }
+
+
+def test_policy_processor_metadata_reports_mixed_modules() -> None:
+    args = Namespace(
+        bits=4,
+        qjl_bits=0,
+        processor_seed=3,
+        exact_keys=True,
+        quantize_values=True,
+        key_bits=None,
+        value_bits=5,
+        codebook_samples=100,
+    )
+    first = object()
+    second = object()
+    modules = [
+        ("a.attn2", first),
+        ("b.attn2", second),
+    ]
+    policy = {
+        "turbo_policy": {
+            "bits": 5,
+            "qjl_bits": 128,
+            "processor_seed": 11,
+            "quantize_keys": True,
+            "quantize_values": False,
+            "key_bits": None,
+            "value_bits": None,
+            "codebook_samples": 20000,
+        },
+        "quantized_modules": [
+            {
+                "name": "a.attn2",
+            },
+            {
+                "name": "b.attn2",
+                "bits": 6,
+            },
+        ],
+    }
+    selection = _select_policy_module_entries(modules, policy=policy)
+
+    metadata = _policy_processor_metadata(modules, selection, args=args, policy=policy)
+
+    assert metadata["mixed"] is True
+    assert [entry["bits"] for entry in metadata["modules"]] == [5, 6]
+    assert [entry["index"] for entry in metadata["modules"]] == [0, 1]
 
 
 def test_policy_suite_cases_use_file_defaults() -> None:

@@ -92,8 +92,13 @@ def main() -> None:
     policy = _load_policy(args.policy_file)
     if policy is not None and (args.module_indices or args.module_names):
         raise SystemExit("Use either --policy-file or explicit module selection, not both.")
+    policy_selection = (
+        _select_policy_module_entries(all_modules, policy=policy)
+        if policy is not None
+        else []
+    )
     modules = (
-        _select_policy_modules(all_modules, policy=policy)
+        [(name, module) for name, module, _entry in policy_selection]
         if policy is not None
         else _select_attention_modules(all_modules, args=args)
     )
@@ -115,9 +120,17 @@ def main() -> None:
         label="baseline",
     )
 
-    processor_config = _processor_config(args, policy=policy)
-    processor = TurboDAttnProcessor(**processor_config)
-    _install_processor(modules, processor)
+    processor_metadata: dict[str, Any]
+    if policy_selection:
+        _install_policy_processors(policy_selection, args=args, policy=policy)
+        processor_metadata = _policy_processor_metadata(
+            all_modules, policy_selection, args=args, policy=policy
+        )
+    else:
+        processor_config = _processor_config(args, policy=policy)
+        processor = TurboDAttnProcessor(**processor_config)
+        _install_processor(modules, processor)
+        processor_metadata = _processor_metadata(processor_config)
 
     turbo_image, turbo_stats = _run_image(
         pipe,
@@ -153,7 +166,7 @@ def main() -> None:
         "model_cpu_offload": args.model_cpu_offload,
         "policy_file": args.policy_file,
         "selected_modules": _module_metadata(all_modules, modules),
-        "processor": _processor_metadata(processor_config),
+        "processor": processor_metadata,
         "policy": policy,
         "baseline": baseline_stats,
         "turbo": turbo_stats,
@@ -313,14 +326,25 @@ def _load_policy(path: str | None) -> dict[str, Any] | None:
 def _select_policy_modules(
     modules: list[tuple[str, Any]], *, policy: dict[str, Any]
 ) -> list[tuple[str, Any]]:
+    return [
+        (name, module)
+        for name, module, _entry in _select_policy_module_entries(modules, policy=policy)
+    ]
+
+
+def _select_policy_module_entries(
+    modules: list[tuple[str, Any]], *, policy: dict[str, Any]
+) -> list[tuple[str, Any, dict[str, Any]]]:
     by_name = {name: module for name, module in modules}
     selected = []
     for entry in policy.get("quantized_modules", []):
+        if not isinstance(entry, dict):
+            raise SystemExit("policy quantized_modules entries must be objects")
         name = entry.get("name")
         if name is not None:
             if name not in by_name:
                 raise SystemExit(f"policy module name not found: {name}")
-            selected.append((name, by_name[name]))
+            selected.append((name, by_name[name], entry))
             continue
 
         index = entry.get("index")
@@ -328,13 +352,17 @@ def _select_policy_modules(
             raise SystemExit("policy entries need either name or index")
         if index < 0 or index >= len(modules):
             raise SystemExit(f"policy module index {index} is out of range")
-        selected.append(modules[index])
+        name, module = modules[index]
+        selected.append((name, module, entry))
 
     return selected
 
 
 def _processor_config(
-    args: argparse.Namespace, *, policy: dict[str, Any] | None
+    args: argparse.Namespace,
+    *,
+    policy: dict[str, Any] | None,
+    module_entry: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     config = {
         "bits": args.bits,
@@ -349,7 +377,16 @@ def _processor_config(
     if policy is None:
         return config
 
-    policy_config = policy.get("turbo_policy", {})
+    _apply_processor_overrides(config, policy.get("turbo_policy", {}))
+    if module_entry is not None:
+        _apply_processor_overrides(config, module_entry)
+        _apply_processor_overrides(config, module_entry.get("turbo_policy", {}))
+    return config
+
+
+def _apply_processor_overrides(config: dict[str, Any], overrides: Any) -> None:
+    if not isinstance(overrides, dict):
+        return
     for source_key, target_key in (
         ("bits", "bits"),
         ("qjl_bits", "qjl_bits"),
@@ -360,9 +397,53 @@ def _processor_config(
         ("value_bits", "value_bits"),
         ("codebook_samples", "codebook_samples"),
     ):
-        if source_key in policy_config:
-            config[target_key] = policy_config[source_key]
-    return config
+        if source_key in overrides:
+            config[target_key] = overrides[source_key]
+
+
+def _install_policy_processors(
+    selection: list[tuple[str, Any, dict[str, Any]]],
+    *,
+    args: argparse.Namespace,
+    policy: dict[str, Any],
+) -> None:
+    for name, module, entry in selection:
+        config = _processor_config(args, policy=policy, module_entry=entry)
+        _install_processor([(name, module)], TurboDAttnProcessor(**config))
+
+
+def _policy_processor_metadata(
+    all_modules: list[tuple[str, Any]],
+    selection: list[tuple[str, Any, dict[str, Any]]],
+    *,
+    args: argparse.Namespace,
+    policy: dict[str, Any],
+) -> dict[str, Any]:
+    default_config = _processor_config(args, policy=policy)
+    module_indices = {
+        id(module): index for index, (_name, module) in enumerate(all_modules)
+    }
+    module_configs = []
+    for name, module, entry in selection:
+        config = _processor_config(args, policy=policy, module_entry=entry)
+        module_configs.append(
+            {
+                "index": module_indices[id(module)],
+                "name": name,
+                **_processor_metadata(config),
+            }
+        )
+
+    default_metadata = _processor_metadata(default_config)
+    return {
+        **default_metadata,
+        "mixed": any(
+            _processor_metadata(_processor_config(args, policy=policy, module_entry=entry))
+            != default_metadata
+            for _name, _module, entry in selection
+        ),
+        "modules": module_configs,
+    }
 
 
 def _processor_metadata(config: dict[str, Any]) -> dict[str, Any]:
@@ -475,9 +556,7 @@ def _mib(value: int) -> float:
     return value / (1024 * 1024)
 
 
-def _install_processor(
-    modules: list[tuple[str, Any]], processor: TurboDAttnProcessor
-) -> None:
+def _install_processor(modules: list[tuple[str, Any]], processor: Any) -> None:
     for _name, module in modules:
         setter = getattr(module, "set_processor", None)
         if callable(setter):

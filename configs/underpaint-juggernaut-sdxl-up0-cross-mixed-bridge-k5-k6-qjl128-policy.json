@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "description": "Narrow mixed K5/K6 bridge policy for selected up_blocks.0 cross-attention modules in the local Underpaint Juggernaut SDXL checkpoint.",
+  "source": "docs/mixed-policy-2026-05-31.md",
+  "validation": {
+    "accepted_horizon_steps": 20,
+    "prompt_count": 4,
+    "seed_count": 4,
+    "combined_policy": {
+      "modules": [67, 87],
+      "mse": 0.0000619680286035873,
+      "mae": 0.00310667441226542,
+      "psnr_db": 42.07832319893604
+    },
+    "validation_suite": {
+      "case_file": "configs/underpaint-juggernaut-validation-cases.json",
+      "output_dir": "captures/image-policy-suite-juggernaut-up0-cross-mixed-bridge-20step",
+      "case_count": 3,
+      "min_psnr_db": 37.85235665015484,
+      "mean_psnr_db": 43.41674319547445,
+      "max_mse": 0.00016396997671108693
+    },
+    "note": "Narrow bridge candidate. Larger mixed policies failed composition on the compass prompt."
+  },
+  "selection_metric": {
+    "note": "Bridge selected after full mixed K5/K6, strict mixed K5/K6, and three-module expansions failed composition."
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "turbo_policy": {
+    "bits": 5,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 128,
+    "codebook_samples": 20000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false
+  },
+  "quantized_modules": [
+    {
+      "index": 67,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.9.attn2",
+      "source_policy": "configs/underpaint-juggernaut-sdxl-up0-cross-k5-qjl128-policy.json"
+    },
+    {
+      "index": 87,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.9.attn2",
+      "bits": 6,
+      "source_policy": "configs/underpaint-juggernaut-sdxl-up0-attn1-cross-k6-qjl128-policy.json"
+    }
+  ],
+  "rejected_mixed_probes": [
+    {
+      "modules": [49, 59, 61, 65, 67, 79, 87],
+      "policy": "K5 for attention.0, K6 for modules 79 and 87",
+      "mse": 0.003693393664434552,
+      "mae": 0.033474382013082504,
+      "psnr_db": 24.32574400125894
+    },
+    {
+      "modules": [49, 59, 61, 65, 67, 79, 87],
+      "policy": "K6 for all selected modules",
+      "mse": 0.0014868509024381638,
+      "mae": 0.02303078956902027,
+      "psnr_db": 28.277325792217283
+    },
+    {
+      "modules": [49, 59, 65, 67, 79, 87],
+      "policy": "Dropped borderline module 61",
+      "mse": 0.004022912587970495,
+      "mae": 0.03433093801140785,
+      "psnr_db": 23.954594039125816
+    },
+    {
+      "modules": [59, 67, 79, 87],
+      "policy": "High-confidence four-module core",
+      "mse": 0.0031526985112577677,
+      "mae": 0.031106239184737206,
+      "psnr_db": 25.013175583220224
+    },
+    {
+      "modules": [67, 79, 87],
+      "policy": "Bridge plus module 79",
+      "mse": 0.0024840652476996183,
+      "mae": 0.02741793729364872,
+      "psnr_db": 26.048370009496665
+    },
+    {
+      "modules": [59, 67, 87],
+      "policy": "Bridge plus module 59",
+      "mse": 0.002985528903082013,
+      "mae": 0.03133324161171913,
+      "psnr_db": 25.24978720031266
+    }
+  ]
+}

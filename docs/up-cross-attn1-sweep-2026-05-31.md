@@ -123,9 +123,8 @@ accepted pair.
 
 ## Next Slice
 
-1. Add per-module precision support to policy loading, so a single policy can
-   carry K5 and K6 module groups together.
-2. Test a mixed policy covering `up_blocks.0.attentions.0` plus
-   `up_blocks.0.attentions.1`.
-3. Continue sweeping `up_blocks.0.attentions.2` after mixed policy support is in
-   place.
+1. Add timestep-window support to policy loading, so fragile early denoising
+   steps can stay exact.
+2. Re-test the rejected larger mixed policies with early-step exact fallback.
+3. Continue sweeping `up_blocks.0.attentions.2` after the policy surface can
+   express composition constraints.

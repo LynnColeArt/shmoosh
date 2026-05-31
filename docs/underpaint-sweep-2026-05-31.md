@@ -236,3 +236,10 @@ stricter K6 pair `79,87` cleared the 20-step compass A/B (`psnr=42.50 dB`) and
 the three-case validation suite (`min_psnr=42.66 dB`, `mean_psnr=47.24 dB`).
 The tracked policy is
 `configs/underpaint-juggernaut-sdxl-up0-attn1-cross-k6-qjl128-policy.json`.
+
+Mixed-precision policy support is recorded in `docs/mixed-policy-2026-05-31.md`.
+The first cross-group bridge uses module `67` at K5 and module `87` at K6.
+Larger mixed policies failed composition, but the narrow bridge cleared the
+20-step compass A/B (`psnr=42.08 dB`) and the three-case validation suite
+(`min_psnr=37.85 dB`, `mean_psnr=43.42 dB`). The tracked policy is
+`configs/underpaint-juggernaut-sdxl-up0-cross-mixed-bridge-k5-k6-qjl128-policy.json`.

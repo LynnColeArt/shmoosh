@@ -9,6 +9,7 @@ from typing import Any
 from turbo_d.cli.image_ab_smoke import (
     _image_metrics,
     _install_processor,
+    _install_policy_processors,
     _list_attention_modules,
     _load_pipeline,
     _load_policy,
@@ -17,15 +18,13 @@ from turbo_d.cli.image_ab_smoke import (
     _move_pipeline,
     _pipeline_kwargs,
     _print_modules,
-    _processor_config,
-    _processor_metadata,
+    _policy_processor_metadata,
     _run_image,
     _select_component,
-    _select_policy_modules,
+    _select_policy_module_entries,
     _set_progress_bar,
     _write_diff_heatmap,
 )
-from turbo_d.diffusers_processor import TurboDAttnProcessor
 
 
 def main() -> None:
@@ -84,7 +83,8 @@ def main() -> None:
     policy = _load_policy(args.policy_file)
     if policy is None:
         raise SystemExit("--policy-file is required")
-    modules = _select_policy_modules(all_modules, policy=policy)
+    policy_selection = _select_policy_module_entries(all_modules, policy=policy)
+    modules = [(name, module) for name, module, _entry in policy_selection]
     if not modules:
         raise RuntimeError("policy selected no attention modules")
 
@@ -99,8 +99,9 @@ def main() -> None:
     _move_pipeline(pipe, args)
     _set_progress_bar(pipe)
 
-    processor_config = _processor_config(args, policy=policy)
-    processor = TurboDAttnProcessor(**processor_config)
+    processor_metadata = _policy_processor_metadata(
+        all_modules, policy_selection, args=args, policy=policy
+    )
     original_processors = {
         id(module): getattr(module, "processor", None) for _name, module in modules
     }
@@ -118,9 +119,9 @@ def main() -> None:
                     output_dir=output_dir,
                     all_modules=all_modules,
                     modules=modules,
+                    policy_selection=policy_selection,
                     policy=policy,
-                    processor=processor,
-                    processor_config=processor_config,
+                    processor_metadata=processor_metadata,
                 )
             )
     finally:
@@ -139,7 +140,7 @@ def main() -> None:
         "dtype": args.dtype,
         "model_cpu_offload": args.model_cpu_offload,
         "selected_modules": _module_metadata(all_modules, modules),
-        "processor": _processor_metadata(processor_config),
+        "processor": processor_metadata,
         "policy": policy,
         "rows": rows,
         "aggregate": _aggregate_rows(rows),
@@ -157,9 +158,9 @@ def _run_case(
     output_dir: Path,
     all_modules: list[tuple[str, Any]],
     modules: list[tuple[str, Any]],
+    policy_selection: list[tuple[str, Any, dict[str, Any]]],
     policy: dict[str, Any],
-    processor: TurboDAttnProcessor,
-    processor_config: dict[str, Any],
+    processor_metadata: dict[str, Any],
 ) -> dict[str, Any]:
     case_dir = output_dir / _safe_case_id(case.case_id)
     case_dir.mkdir(parents=True, exist_ok=True)
@@ -172,7 +173,7 @@ def _run_case(
         common_kwargs=common_kwargs,
         label=f"{case.case_id}:baseline",
     )
-    _install_processor(modules, processor)
+    _install_policy_processors(policy_selection, args=args, policy=policy)
     turbo_image, turbo_stats = _run_image(
         pipe,
         torch=torch,
@@ -221,7 +222,7 @@ def _run_case(
     payload = {
         "case": _case_metadata(case),
         "selected_modules": _module_metadata(all_modules, modules),
-        "processor": _processor_metadata(processor_config),
+        "processor": processor_metadata,
         "policy": policy,
         "baseline": baseline_stats,
         "turbo": turbo_stats,
