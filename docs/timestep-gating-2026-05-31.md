@@ -125,6 +125,27 @@ The 30-step run confirms that the gate is not a hard-coded 20-step artifact.
 The non-square run has a larger delta, but still remains far above the failed
 ungated mixed policy.
 
+## Native-Resolution Follow-Up
+
+The 512px policy was retested at 1024x1024 in
+`docs/1024-policy-validation-2026-05-31.md`. At native SDXL size, the 30% gate
+is much stronger than the 20% gate:
+
+| Exact First | Resolved Start Step | PSNR |
+| ---: | ---: | ---: |
+| 10% | 2 | 38.27 dB |
+| 20% | 4 | 35.49 dB |
+| 30% | 6 | 46.89 dB |
+
+The accepted 1024 policy is:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated30pct-k5-k6-qjl128-policy.json
+```
+
+It cleared the three-case 1024 validation suite with `min_psnr=48.48 dB` and
+`mean_psnr=52.15 dB`.
+
 ## Interpretation
 
 This is the strongest policy result so far. Exact-first gating rescued a mixed
@@ -142,6 +163,6 @@ respect early denoising sensitivity, not just per-layer sensitivity.
 
 ## Next Slice
 
-1. Expand percentage-window validation across more seeds and prompts.
-2. Test whether 10%, 20%, and 30% gates rank consistently at 30 steps.
-3. Start the packed-K production design against this policy surface.
+1. Run one 1024 validation suite at 30 steps to test horizon transfer.
+2. Start the packed-K production design against the accepted 1024 policy.
+3. Estimate packed K5/K6 plus QJL-128 bandwidth savings for the selected modules.

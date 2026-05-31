@@ -223,9 +223,30 @@ it reproduced the absolute 20-step gate and held at a 30-step horizon:
 This moves the policy surface from absolute step numbers to denoising-fraction
 windows, which should transfer better across local generation settings.
 
+## Native-Resolution Validation
+
+The 1024px validation pass is recorded in
+`docs/1024-policy-validation-2026-05-31.md`. The 512px 20% gate was not the
+native-resolution winner; at 1024x1024, exact-first 30% performed best on the
+compass prompt:
+
+| Exact First | MSE | MAE | PSNR |
+| ---: | ---: | ---: | ---: |
+| 10% | 0.00014880 | 0.00378267 | 38.27 dB |
+| 20% | 0.00028238 | 0.00555338 | 35.49 dB |
+| 30% | 0.00002047 | 0.00134793 | 46.89 dB |
+
+The accepted 1024 candidate is:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated30pct-k5-k6-qjl128-policy.json
+```
+
+It cleared the three-case 1024 validation suite with `min_psnr=48.48 dB` and
+`mean_psnr=52.15 dB`.
+
 ## Next Slice
 
-1. Expand percentage-window validation across more seeds and prompts.
-2. Compare 10%, 20%, and 30% gates at 30 denoising steps.
-3. Start a production-path design note for packed key storage and a Torch/Triton
-   attention kernel against the timestep-aware policy surface.
+1. Test the accepted 1024 policy at a 30-step horizon.
+2. Start packed-K production design against the 1024 policy surface.
+3. Estimate packed K5/K6 plus QJL-128 bandwidth savings for the selected modules.

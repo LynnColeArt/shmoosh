@@ -254,6 +254,18 @@ It leaves the first 20% of denoising exact. That reproduced the 20-step result
 at `psnr=46.75 dB`, held at 30 steps with `psnr=45.70 dB`, and passed a
 `768x512` shape stress at `psnr=39.57 dB`.
 
+Native SDXL-size tests use 1024px as the meaningful quality gate. At 1024x1024,
+the best current candidate is:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated30pct-k5-k6-qjl128-policy.json
+```
+
+It leaves the first 30% of denoising exact, then quantizes the selected seven
+modules. It cleared the 1024 compass A/B with `psnr=46.89 dB` and a three-case
+1024 validation suite with `min_psnr=48.48 dB`; see
+`docs/1024-policy-validation-2026-05-31.md`.
+
 ## GPU Target
 
 The practical target is the 10-12GB VRAM band:

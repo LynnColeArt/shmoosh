@@ -139,8 +139,13 @@ configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated20pct-k5-k6-qjl128-polic
 It reproduced the 20-step compass result (`psnr=46.75 dB`), held at 30 steps
 (`psnr=45.70 dB`), and passed a `768x512` shape stress (`psnr=39.57 dB`).
 
+Native 1024px validation is recorded in
+`docs/1024-policy-validation-2026-05-31.md`. At 1024x1024, exact-first 30%
+became the accepted gate, clearing the three-case suite with `min_psnr=48.48 dB`
+and `mean_psnr=52.15 dB`.
+
 ## Next Slice
 
-1. Expand percentage-window validation across more prompts and seeds.
-2. Compare 10%, 20%, and 30% gates at 30 denoising steps.
+1. Test the accepted 1024 policy at a 30-step horizon.
+2. Start packed-K production design against the 1024 policy surface.
 3. Continue the up-block sweep against the timestep-aware policy surface.

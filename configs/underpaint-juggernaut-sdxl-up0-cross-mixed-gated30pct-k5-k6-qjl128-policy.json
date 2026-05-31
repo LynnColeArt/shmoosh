@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "description": "Percentage-timestep-gated mixed K5/K6 Turbo-D policy with exact-first 30% activation for selected up_blocks.0 cross-attention modules in the local Underpaint Juggernaut SDXL checkpoint.",
+  "source": "docs/1024-policy-validation-2026-05-31.md",
+  "validation": {
+    "quantize_start_percent": 0.3,
+    "accepted_horizon_steps": [20],
+    "accepted_resolution": "1024x1024",
+    "prompt_count": 4,
+    "seed_count": 4,
+    "resolved_quantize_start_step_at_20": 6,
+    "compass_20_step_1024x1024": {
+      "output_dir": "captures/image-ab-juggernaut-up0-cross-mixed-gated30pct-1024-20step",
+      "mse": 0.00002047312409558799,
+      "mae": 0.0013479258632287383,
+      "psnr_db": 46.8881588113081
+    },
+    "validation_suite_1024": {
+      "case_file": "configs/underpaint-juggernaut-validation-1024-cases.json",
+      "output_dir": "captures/image-policy-suite-juggernaut-up0-cross-mixed-gated30pct-1024-20step",
+      "case_count": 3,
+      "min_psnr_db": 48.47992469584406,
+      "mean_psnr_db": 52.14817658217481,
+      "max_mse": 0.000014190821275406051
+    },
+    "note": "1024px native-resolution candidate. Exact first 30% of denoising steps, then quantize the remaining steps."
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "turbo_policy": {
+    "bits": 5,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 128,
+    "codebook_samples": 20000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false
+  },
+  "quantized_modules": [
+    {
+      "index": 49,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn2",
+      "quantize_start_percent": 0.3
+    },
+    {
+      "index": 59,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.5.attn2",
+      "quantize_start_percent": 0.3
+    },
+    {
+      "index": 61,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.6.attn2",
+      "quantize_start_percent": 0.3
+    },
+    {
+      "index": 65,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.8.attn2",
+      "quantize_start_percent": 0.3
+    },
+    {
+      "index": 67,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.9.attn2",
+      "quantize_start_percent": 0.3
+    },
+    {
+      "index": 79,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.5.attn2",
+      "bits": 6,
+      "quantize_start_percent": 0.3
+    },
+    {
+      "index": 87,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.9.attn2",
+      "bits": 6,
+      "quantize_start_percent": 0.3
+    }
+  ],
+  "exact_modules": [
+    {
+      "index": 85,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.8.attn2",
+      "reason": "Failed combined K6 composition with modules 79 and 87."
+    }
+  ]
+}

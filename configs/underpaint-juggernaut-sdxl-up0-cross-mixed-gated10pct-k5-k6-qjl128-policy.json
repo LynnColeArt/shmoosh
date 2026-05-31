@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "description": "Percentage-timestep-gated mixed K5/K6 Turbo-D policy with exact-first 10% activation for selected up_blocks.0 cross-attention modules in the local Underpaint Juggernaut SDXL checkpoint.",
+  "source": "docs/1024-policy-validation-2026-05-31.md",
+  "validation": {
+    "quantize_start_percent": 0.1,
+    "resolved_quantize_start_step_at_20": 2,
+    "compass_20_step_1024x1024": {
+      "output_dir": "captures/image-ab-juggernaut-up0-cross-mixed-gated10pct-1024-20step",
+      "mse": 0.00014880223898217082,
+      "mae": 0.0037826737388968468,
+      "psnr_db": 38.273905340435924
+    },
+    "note": "1024px sweep candidate. Exact first 10% of denoising steps, then quantize the remaining steps."
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "turbo_policy": {
+    "bits": 5,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 128,
+    "codebook_samples": 20000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false
+  },
+  "quantized_modules": [
+    {
+      "index": 49,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn2",
+      "quantize_start_percent": 0.1
+    },
+    {
+      "index": 59,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.5.attn2",
+      "quantize_start_percent": 0.1
+    },
+    {
+      "index": 61,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.6.attn2",
+      "quantize_start_percent": 0.1
+    },
+    {
+      "index": 65,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.8.attn2",
+      "quantize_start_percent": 0.1
+    },
+    {
+      "index": 67,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.9.attn2",
+      "quantize_start_percent": 0.1
+    },
+    {
+      "index": 79,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.5.attn2",
+      "bits": 6,
+      "quantize_start_percent": 0.1
+    },
+    {
+      "index": 87,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.9.attn2",
+      "bits": 6,
+      "quantize_start_percent": 0.1
+    }
+  ],
+  "exact_modules": [
+    {
+      "index": 85,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.8.attn2",
+      "reason": "Failed combined K6 composition with modules 79 and 87."
+    }
+  ]
+}

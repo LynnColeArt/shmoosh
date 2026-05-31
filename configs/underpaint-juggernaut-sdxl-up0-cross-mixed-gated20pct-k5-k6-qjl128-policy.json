@@ -28,6 +28,12 @@
       "mae": 0.0033019420225173235,
       "psnr_db": 39.56507552086673
     },
+    "compass_20_step_1024x1024": {
+      "output_dir": "captures/image-ab-juggernaut-up0-cross-mixed-gated20pct-1024-20step",
+      "mse": 0.0002823758695740253,
+      "mae": 0.005553377792239189,
+      "psnr_db": 35.491724186634556
+    },
     "note": "Exact first 20% of denoising steps, then quantize the remaining steps. This is the horizon-scaled form of the gated20 mixed policy."
   },
   "selection_metric": {

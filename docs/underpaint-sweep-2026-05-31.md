@@ -254,3 +254,9 @@ The horizon-scaled 20% variant is
 `configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated20pct-k5-k6-qjl128-policy.json`;
 it reproduced the 20-step result, held at 30 steps (`psnr=45.70 dB`), and
 passed a `768x512` shape stress (`psnr=39.57 dB`).
+
+Native 1024px validation is recorded in
+`docs/1024-policy-validation-2026-05-31.md`. At 1024x1024 the 30% gate is the
+accepted candidate, clearing the compass A/B at `psnr=46.89 dB` and a
+three-case validation suite with `min_psnr=48.48 dB`. The tracked 1024 policy is
+`configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated30pct-k5-k6-qjl128-policy.json`.
