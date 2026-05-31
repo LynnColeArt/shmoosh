@@ -23,6 +23,7 @@ from shmoosh.cli.image_ab_smoke import (
     _select_component,
     _select_policy_module_entries,
     _set_progress_bar,
+    _warm_packed_processors,
     _write_diff_heatmap,
 )
 from shmoosh.diffusers_processor import DenoisingStepState
@@ -198,6 +199,7 @@ def _run_case(
     _install_policy_processors(
         policy_selection, args=args, policy=policy, step_state=step_state
     )
+    _warm_packed_processors(modules, torch=torch, args=args)
     shmoosh_image, shmoosh_stats = _run_image(
         pipe,
         torch=torch,

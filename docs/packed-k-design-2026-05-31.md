@@ -237,6 +237,12 @@ inside a per-module `shmoosh_policy` override. This lets the accepted 1024
 policy run through the packed-K exact-V path without changing the policy module
 selection or timestep window semantics.
 
+The processor now caches codec objects and packed score resources per module,
+bit depth, head dimension, device, and seed. The image CLIs also warm packed
+processors before timed generation. This removes repeated codebook/rotation/QJL
+resource construction from the hot image path and moves Triton compilation out
+of the measured Shmoosh run.
+
 ## Kernel Direction
 
 The simplest production path is a two-stage Torch/Triton design:

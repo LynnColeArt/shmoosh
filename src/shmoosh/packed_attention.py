@@ -55,6 +55,8 @@ def encode_and_attention_output(
     codebook_samples: int = 80_000,
     lloyd_iters: int = 80,
     output_dtype: Any | None = None,
+    codec: Any | None = None,
+    resources: PackedScoreResources | None = None,
 ) -> Any:
     """Encode K into a packed block, then run packed-K exact-V attention."""
 
@@ -65,11 +67,13 @@ def encode_and_attention_output(
         seed=seed,
         codebook_samples=codebook_samples,
         lloyd_iters=lloyd_iters,
+        codec=codec,
     )
     return packed_key_attention_output(
         query,
         block,
         value,
+        resources=resources,
         backend=backend,
         output_dtype=output_dtype,
     )

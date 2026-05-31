@@ -49,6 +49,21 @@ def test_encode_packed_keys_without_qjl_has_no_residual_payload() -> None:
     assert block.packed_key_bytes() == 1 * 2 * 5 * (4 + 4)
 
 
+def test_encode_packed_keys_rejects_mismatched_codec() -> None:
+    keys = torch.zeros(1, 2, 5, 8)
+    codec = ShmooshCodec(dim=8, bits=4, qjl_bits=0, seed=3, codebook_samples=256)
+
+    with pytest.raises(ValueError, match="codec parameters"):
+        encode_packed_keys(
+            keys,
+            bits=4,
+            qjl_bits=0,
+            seed=3,
+            codebook_samples=512,
+            codec=codec,
+        )
+
+
 def test_packed_key_bytes_match_sdxl_assumption() -> None:
     keys = torch.zeros(2, 20, 77, 64)
     block = encode_packed_keys(

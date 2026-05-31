@@ -13,6 +13,7 @@ from shmoosh.diffusers_processor import (
     DenoisingStepState,
     ScheduledShmooshAttnProcessor,
     ShmooshAttnProcessor,
+    warm_packed_attention_processor,
 )
 
 
@@ -150,6 +151,8 @@ def main() -> None:
         processor = ShmooshAttnProcessor(**processor_config)
         _install_processor(modules, processor)
         processor_metadata = _processor_metadata(processor_config)
+
+    _warm_packed_processors(modules, torch=torch, args=args)
 
     shmoosh_image, shmoosh_stats = _run_image(
         pipe,
@@ -701,6 +704,31 @@ def _install_processor(modules: list[tuple[str, Any]], processor: Any) -> None:
             setter(processor)
         else:
             module.processor = processor
+
+
+def _warm_packed_processors(
+    modules: list[tuple[str, Any]],
+    *,
+    torch: Any,
+    args: argparse.Namespace,
+) -> list[str]:
+    dtype = {
+        "fp16": torch.float16,
+        "bf16": torch.bfloat16,
+        "fp32": torch.float32,
+    }.get(getattr(args, "dtype", "fp32"), torch.float32)
+    warmed = []
+    for name, module in modules:
+        if warm_packed_attention_processor(
+            module,
+            getattr(module, "processor", None),
+            device=args.device,
+            dtype=dtype,
+        ):
+            warmed.append(name)
+    if warmed and _is_cuda_device(torch, args.device):
+        torch.cuda.empty_cache()
+    return warmed
 
 
 def _image_metrics(baseline_image: Any, shmoosh_image: Any) -> dict[str, float]:

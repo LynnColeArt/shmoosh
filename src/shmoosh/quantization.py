@@ -59,6 +59,8 @@ class ShmooshCodec:
         self.bits = bits
         self.qjl_bits = qjl_bits
         self.seed = seed
+        self.codebook_samples = codebook_samples
+        self.lloyd_iters = lloyd_iters
         self.rotation = _orthogonal_matrix(dim, seed)
         self.codebook = _normal_lloyd_codebook(
             bits=bits,

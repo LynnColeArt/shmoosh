@@ -5,6 +5,7 @@ import pytest
 
 from shmoosh.packed_keys import encode_packed_keys
 from shmoosh.packed_scores import (
+    build_score_resources,
     packed_key_scores,
     torch_packed_key_scores,
     triton,
@@ -43,6 +44,15 @@ def test_packed_key_scores_auto_uses_torch_on_cpu() -> None:
 
     assert scores.shape == (1, 2, 3, 5)
     assert torch.count_nonzero(scores) == 0
+
+
+def test_build_score_resources_rejects_mismatched_codec() -> None:
+    key = torch.zeros(1, 2, 5, 8)
+    block = encode_packed_keys(key, bits=4, qjl_bits=0, seed=3, codebook_samples=512)
+    codec = ShmooshCodec(dim=8, bits=4, qjl_bits=0, seed=3, codebook_samples=256)
+
+    with pytest.raises(ValueError, match="codec parameters"):
+        build_score_resources(block, codec=codec)
 
 
 @pytest.mark.skipif(

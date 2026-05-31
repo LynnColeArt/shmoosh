@@ -29,18 +29,45 @@ def build_score_resources(
     *,
     device: Any | None = None,
     dtype: Any | None = None,
+    codec: ShmooshCodec | None = None,
 ) -> PackedScoreResources:
     torch = _load_torch()
     target_device = block.codes.device if device is None else torch.device(device)
     target_dtype = torch.float32 if dtype is None else dtype
-    codec = ShmooshCodec(
-        dim=block.head_dim,
-        bits=block.bits,
-        qjl_bits=block.qjl_bits,
-        seed=block.seed,
-        codebook_samples=block.codebook_samples,
-        lloyd_iters=block.lloyd_iters,
+    if codec is None:
+        codec = ShmooshCodec(
+            dim=block.head_dim,
+            bits=block.bits,
+            qjl_bits=block.qjl_bits,
+            seed=block.seed,
+            codebook_samples=block.codebook_samples,
+            lloyd_iters=block.lloyd_iters,
+        )
+    elif (
+        codec.dim != block.head_dim
+        or codec.bits != block.bits
+        or codec.qjl_bits != block.qjl_bits
+        or codec.seed != block.seed
+        or codec.codebook_samples != block.codebook_samples
+        or codec.lloyd_iters != block.lloyd_iters
+    ):
+        raise ValueError("codec parameters do not match packed score block")
+    return score_resources_from_codec(
+        codec,
+        device=target_device,
+        dtype=target_dtype,
     )
+
+
+def score_resources_from_codec(
+    codec: ShmooshCodec,
+    *,
+    device: Any,
+    dtype: Any | None = None,
+) -> PackedScoreResources:
+    torch = _load_torch()
+    target_device = torch.device(device)
+    target_dtype = torch.float32 if dtype is None else dtype
     qjl_matrix = (
         None
         if codec.qjl_matrix is None
@@ -50,10 +77,12 @@ def build_score_resources(
     )
     return PackedScoreResources(
         rotation=torch.from_numpy(codec.rotation).to(
-            device=target_device, dtype=target_dtype
+            device=target_device,
+            dtype=target_dtype,
         ),
         codebook=torch.from_numpy(codec.codebook).to(
-            device=target_device, dtype=target_dtype
+            device=target_device,
+            dtype=target_dtype,
         ),
         qjl_matrix=qjl_matrix,
     )
@@ -288,7 +317,7 @@ def _load_torch():
 
 if triton is not None and tl is not None:
 
-    @triton.jit
+    @triton.jit(do_not_specialize=["q_tokens", "key_tokens"])
     def _packed_key_score_kernel(
         q_rot_ptr,
         q_proj_ptr,
@@ -298,8 +327,8 @@ if triton is not None and tl is not None:
         residual_norms_ptr,
         codebook_ptr,
         out_ptr,
-        q_tokens: tl.constexpr,
-        key_tokens: tl.constexpr,
+        q_tokens,
+        key_tokens,
         HEAD_DIM: tl.constexpr,
         BITS: tl.constexpr,
         QJL_BITS: tl.constexpr,

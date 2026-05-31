@@ -128,6 +128,7 @@ def encode_packed_keys(
     seed: int,
     codebook_samples: int = 80_000,
     lloyd_iters: int = 80,
+    codec: ShmooshCodec | None = None,
 ) -> PackedKeyBlock:
     torch = _load_torch()
     if keys.ndim != 4:
@@ -139,14 +140,24 @@ def encode_packed_keys(
 
     device = keys.device
     batch, heads, tokens, head_dim = (int(size) for size in keys.shape)
-    codec = ShmooshCodec(
-        dim=head_dim,
-        bits=bits,
-        qjl_bits=qjl_bits,
-        seed=seed,
-        codebook_samples=codebook_samples,
-        lloyd_iters=lloyd_iters,
-    )
+    if codec is None:
+        codec = ShmooshCodec(
+            dim=head_dim,
+            bits=bits,
+            qjl_bits=qjl_bits,
+            seed=seed,
+            codebook_samples=codebook_samples,
+            lloyd_iters=lloyd_iters,
+        )
+    elif (
+        codec.dim != head_dim
+        or codec.bits != bits
+        or codec.qjl_bits != qjl_bits
+        or codec.seed != seed
+        or codec.codebook_samples != codebook_samples
+        or codec.lloyd_iters != lloyd_iters
+    ):
+        raise ValueError("codec parameters do not match requested packed key block")
     encoded = codec.encode(
         keys.detach()
         .to(device="cpu", dtype=torch.float32)

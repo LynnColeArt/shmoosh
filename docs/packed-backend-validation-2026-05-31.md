@@ -118,10 +118,29 @@ Packed backend parity holds at native SDXL resolution for both accepted
 horizons. The 20-step and 30-step suites keep minimum PSNR above the previous
 reference-backend acceptance floor.
 
-The next production slice should be performance-oriented:
+## First Performance Slice
 
-1. Cache codec resources per module/backend instead of rebuilding them per
-   attention call.
-2. Warm Triton kernels before timing.
-3. Fuse or reduce query-side projection overhead.
-4. Avoid materializing full score tensors once the score kernel is stable.
+The first performance slice after this validation added:
+
+1. Per-processor codec caches keyed by head dimension, bit depth, QJL width,
+   seed, and codebook settings.
+2. Per-device packed score resource caches for rotation, codebook, and QJL
+   matrices.
+3. Automatic packed-backend warmup in image A/B, module sweep, and policy-suite
+   runs before measured Shmoosh generation starts.
+4. Token-count-independent Triton score kernel compilation, so a tiny warmup can
+   compile the same kernel family later used by larger 1024 attention shapes.
+
+A same-process microcheck on the RTX 4070 warmed `D=64`, `K5`, `QJL-128` once,
+then ran a `1x20x64x64` query against `77` packed text keys:
+
+```text
+warm_seconds=10.3540
+large_packed_attention_seconds=0.0646
+codec_cache_entries=1
+resource_cache_entries=1
+```
+
+This is still not an end-to-end speed claim. The next production slice should
+fuse or reduce query-side projection overhead and avoid materializing full score
+tensors once the score kernel is stable.

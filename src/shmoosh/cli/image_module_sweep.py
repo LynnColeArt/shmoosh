@@ -20,6 +20,7 @@ from shmoosh.cli.image_ab_smoke import (
     _select_attention_modules,
     _select_component,
     _set_progress_bar,
+    _warm_packed_processors,
     _write_diff_heatmap,
 )
 from shmoosh.diffusers_processor import ShmooshAttnProcessor
@@ -270,6 +271,7 @@ def _run_module_policy(
     module_dir = output_dir / _module_dirname(module_index, module_name, policy_name)
     module_dir.mkdir(parents=True, exist_ok=True)
     _install_processor([(module_name, module)], processor)
+    _warm_packed_processors([(module_name, module)], torch=torch, args=args)
 
     shmoosh_image, shmoosh_stats = _run_image(
         pipe,
