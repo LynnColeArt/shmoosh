@@ -171,6 +171,45 @@ uv run shmoosh-packed-score-smoke \
   --backend auto
 ```
 
+## Packed Attention Prototype
+
+The next bridge is `shmoosh.packed_attention.packed_key_attention_output`:
+
+```text
+query: fp16/fp32[B, H, Q, D]
+packed_key_block: PackedKeyBlock[B, H, T, D]
+value: fp16/fp32[B, H, T, D]
+output: fp16/fp32[B, H, Q, D]
+```
+
+This keeps V exact and reuses `packed_key_scores` for the logits:
+
+```text
+scores = packed_key_scores(query, packed_key_block)
+weights = softmax(scores / sqrt(D))
+output = weights @ value
+```
+
+The smoke command compares the packed Torch/Triton path against the existing
+NumPy runtime reference with `quantize_values=False`:
+
+```bash
+uv run shmoosh-packed-attention-smoke \
+  --batch-size 1 \
+  --heads 20 \
+  --query-tokens 64 \
+  --key-tokens 77 \
+  --dim 64 \
+  --bits 5 \
+  --qjl-bits 128 \
+  --backend auto
+```
+
+This is the first end-to-end attention primitive on the production side of the
+research line: packed K, exact V, softmax, and attention output. It is still not
+a Diffusers replacement because masks, layout integration, and output projection
+plumbing remain outside this primitive.
+
 ## Kernel Direction
 
 The simplest production path is a two-stage Torch/Triton design:

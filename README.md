@@ -329,3 +329,17 @@ uv run shmoosh-packed-score-smoke \
 On CUDA, `backend=auto` uses the first Triton score kernel. It still precomputes
 query-side codec projections in Torch, but the kernel consumes packed K codes
 and QJL sign bytes directly.
+
+Smoke-test packed-K exact-V attention output:
+
+```bash
+uv run shmoosh-packed-attention-smoke \
+  --batch-size 1 \
+  --heads 20 \
+  --query-tokens 64 \
+  --key-tokens 77 \
+  --dim 64 \
+  --bits 5 \
+  --qjl-bits 128 \
+  --backend auto
+```
