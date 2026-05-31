@@ -197,6 +197,17 @@ The current K5 policy cleared the three-case validation suite with
 `min_psnr=36.68 dB` and `mean_psnr=44.63 dB`; see
 `docs/policy-validation-2026-05-31.md`.
 
+The current combined up-block cross-attention candidate is:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-cross-k5-qjl128-policy.json
+```
+
+It enables modules `49,59,61,65,67` and cleared the 20-step compass A/B with
+`psnr=32.93 dB`. It also cleared the three-case validation suite with
+`min_psnr=39.47 dB` and `mean_psnr=43.39 dB`; see
+`docs/up-cross-sweep-2026-05-31.md`.
+
 ## GPU Target
 
 The practical target is the 10-12GB VRAM band:

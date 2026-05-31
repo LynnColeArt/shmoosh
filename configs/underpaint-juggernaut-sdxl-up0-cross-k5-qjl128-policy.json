@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "description": "Combined K5 Turbo-D policy for selected up_blocks.0.attentions.0 cross-attention modules in the local Underpaint Juggernaut SDXL checkpoint.",
+  "source": "docs/up-cross-sweep-2026-05-31.md",
+  "validation": {
+    "accepted_horizon_steps": 20,
+    "prompt_count": 4,
+    "seed_count": 4,
+    "combined_policy": {
+      "mse": 0.0005095599335618317,
+      "mae": 0.011138886213302612,
+      "psnr_db": 32.92804727684263
+    },
+    "validation_suite": {
+      "case_file": "configs/underpaint-juggernaut-validation-cases.json",
+      "output_dir": "captures/image-policy-suite-juggernaut-up0-cross-k5-20step",
+      "case_count": 3,
+      "min_psnr_db": 39.47085168296256,
+      "mean_psnr_db": 43.3946375709179,
+      "max_mse": 0.00011295743752270937
+    },
+    "note": "Five selected up-block cross-attention modules preserved the 20-step compass image structure when enabled together and cleared the three-case validation suite. This is a combined candidate, not a broad up-block policy."
+  },
+  "selection_metric": {
+    "candidate_psnr_db": 30.0,
+    "note": "Modules were promoted from a same-prompt single-module sweep, then tested together in one combined image A/B."
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "turbo_policy": {
+    "bits": 5,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 128,
+    "codebook_samples": 20000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false
+  },
+  "quantized_modules": [
+    {
+      "index": 49,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn2",
+      "mse": 0.0005073774955235422,
+      "mae": 0.010858791880309582,
+      "psnr_db": 32.9466879960284
+    },
+    {
+      "index": 59,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.5.attn2",
+      "mse": 0.00006002052759868093,
+      "mae": 0.0039476980455219746,
+      "psnr_db": 42.217001913138866
+    },
+    {
+      "index": 61,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.6.attn2",
+      "mse": 0.0008514680084772408,
+      "mae": 0.013291946612298489,
+      "psnr_db": 30.698316647921704
+    },
+    {
+      "index": 65,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.8.attn2",
+      "mse": 0.0005362934316508472,
+      "mae": 0.012512330897152424,
+      "psnr_db": 32.7059752210324
+    },
+    {
+      "index": 67,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.9.attn2",
+      "mse": 0.00004664025618694723,
+      "mae": 0.0033080705907195807,
+      "psnr_db": 43.31239072737208
+    }
+  ],
+  "exact_modules": [
+    {
+      "index": 51,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.1.attn2",
+      "mse": 0.0033725518733263016,
+      "mae": 0.032225240021944046,
+      "psnr_db": 24.720413617076176
+    },
+    {
+      "index": 53,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.2.attn2",
+      "mse": 0.0038731228560209274,
+      "mae": 0.03391085937619209,
+      "psnr_db": 24.11938726911226
+    },
+    {
+      "index": 55,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.3.attn2",
+      "mse": 0.0029829663690179586,
+      "mae": 0.031431492418050766,
+      "psnr_db": 25.25351642994711
+    },
+    {
+      "index": 57,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.4.attn2",
+      "mse": 0.0039614844135940075,
+      "mae": 0.034139882773160934,
+      "psnr_db": 24.02142048459705
+    },
+    {
+      "index": 63,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.7.attn2",
+      "mse": 0.0016651098849251866,
+      "mae": 0.02451779507100582,
+      "psnr_db": 27.785571009913216
+    }
+  ]
+}

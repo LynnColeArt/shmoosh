@@ -218,3 +218,12 @@ is `configs/underpaint-juggernaut-sdxl-k5-qjl128-policy.json`.
 Additional policy validation is recorded in `docs/policy-validation-2026-05-31.md`.
 Across three new prompt/seed cases, module 49 with K5 stayed above the rough
 quality gate (`min_psnr=36.68 dB`, `mean_psnr=44.63 dB`).
+
+The lateral up-block cross-attention sweep is recorded in
+`docs/up-cross-sweep-2026-05-31.md`. Five modules in
+`up_blocks.0.attentions.0` cleared the single-module gate
+(`49,59,61,65,67`), and the combined policy still cleared the 20-step compass
+A/B (`psnr=32.93 dB`). The tracked combined policy is
+`configs/underpaint-juggernaut-sdxl-up0-cross-k5-qjl128-policy.json`. The
+same combined policy cleared the three-case validation suite with
+`min_psnr=39.47 dB` and `mean_psnr=43.39 dB`.

@@ -68,10 +68,44 @@ laterally to neighboring up-block cross-attention modules.
 The current processor is still a NumPy behavioral path, so runtime timings and
 VRAM numbers are not optimization evidence.
 
+## Combined Up-Block Policy
+
+The later combined up-block candidate is tracked at:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-cross-k5-qjl128-policy.json
+```
+
+That policy enables modules `49,59,61,65,67` in
+`up_blocks.0.attentions.0` and leaves the neighboring failed modules exact. It
+was run through the same three-case suite:
+
+```text
+captures/image-policy-suite-juggernaut-up0-cross-k5-20step/summary.csv
+captures/image-policy-suite-juggernaut-up0-cross-k5-20step/summary.json
+```
+
+| Case | Seed | MSE | MAE | PSNR |
+| --- | ---: | ---: | ---: | ---: |
+| reading-nook-seed1 | 1 | 0.00011296 | 0.00511375 | 39.47 dB |
+| maple-leaf-seed2 | 2 | 0.00007037 | 0.00383828 | 41.53 dB |
+| misty-lake-seed3 | 3 | 0.00001206 | 0.00106764 | 49.19 dB |
+
+Aggregate over the three additional cases:
+
+```text
+mean_psnr=43.39 dB
+min_psnr=39.47 dB
+max_mse=0.00011296
+```
+
+The combined candidate is therefore stronger than the single-prompt compass
+result alone suggested. It still needs broader seed, resolution, and step-count
+coverage before being treated as a production policy.
+
 ## Next Slice
 
-1. Sweep neighboring up-block cross-attention modules with `K5 + QJL-128`.
-2. Promote any modules that clear the 20-step validation gate into a combined
-   policy.
-3. Start a production-path design note for packed key storage and a Torch/Triton
+1. Sweep `up_blocks.0.attentions.1` cross-attention modules.
+2. Start a production-path design note for packed key storage and a Torch/Triton
    attention kernel.
+3. Add a stricter stress lane after the next attention-group candidate exists.

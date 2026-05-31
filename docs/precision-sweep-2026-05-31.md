@@ -96,8 +96,7 @@ All three additional cases cleared the rough 30 dB PSNR gate, with minimum
 
 ## Next Slice
 
-1. Expand to neighboring up-block cross-attention modules.
-2. Promote any modules that clear the 20-step validation gate into a combined
-   policy.
-3. Start designing timestep/layer policy machinery before broadening beyond
+1. Sweep `up_blocks.0.attentions.1` cross-attention modules.
+2. Start designing timestep/layer policy machinery before broadening beyond
    hand-selected modules.
+3. Add a stricter validation lane once another attention group has a candidate.
