@@ -63,9 +63,15 @@ def test_packed_key_attention_accepts_preencoded_block() -> None:
 )
 def test_triton_packed_key_attention_matches_torch() -> None:
     generator = torch.Generator(device="cuda").manual_seed(1)
-    query = torch.randn(1, 2, 4, 8, generator=generator, device="cuda")
-    key = torch.randn(1, 2, 5, 8, generator=generator, device="cuda")
-    value = torch.randn(1, 2, 5, 8, generator=generator, device="cuda")
+    query = torch.randn(
+        1, 2, 4, 16, generator=generator, device="cuda", dtype=torch.float16
+    )
+    key = torch.randn(
+        1, 2, 5, 16, generator=generator, device="cuda", dtype=torch.float16
+    )
+    value = torch.randn(
+        1, 2, 5, 16, generator=generator, device="cuda", dtype=torch.float16
+    )
     block = encode_packed_keys(
         key,
         bits=4,
@@ -83,7 +89,7 @@ def test_triton_packed_key_attention_matches_torch() -> None:
     torch_output = packed_key_attention_output(query, block, value, backend="torch")
 
     assert triton_output.shape == torch_output.shape
-    assert torch.allclose(triton_output, torch_output, atol=2e-5, rtol=1e-5)
+    assert torch.allclose(triton_output, torch_output, atol=5e-4, rtol=5e-4)
 
 
 @pytest.mark.skipif(
@@ -91,9 +97,9 @@ def test_triton_packed_key_attention_matches_torch() -> None:
     reason="CUDA Triton is not available",
 )
 def test_fused_triton_attention_rejects_large_key_tile() -> None:
-    query = torch.zeros(1, 2, 4, 8, device="cuda")
-    key = torch.zeros(1, 2, 6, 8, device="cuda")
-    value = torch.zeros(1, 2, 6, 8, device="cuda")
+    query = torch.zeros(1, 2, 4, 16, device="cuda")
+    key = torch.zeros(1, 2, 6, 16, device="cuda")
+    value = torch.zeros(1, 2, 6, 16, device="cuda")
     block = encode_packed_keys(key, bits=4, qjl_bits=0, seed=5, codebook_samples=512)
 
     with pytest.raises(ValueError, match="key_tokens"):

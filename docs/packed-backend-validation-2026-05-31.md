@@ -152,16 +152,18 @@ does not materialize the full `(batch, heads, query_tokens, key_tokens)` score
 tensor. Larger key sets, CPU runs, and explicit `torch` backend runs continue
 through the materialized-score fallback.
 
+The follow-up kernel slice folded query rotation and QJL projection into that
+same fused kernel for fused-compatible head dimensions. This removes the
+host-side `q_rot` and `q_proj` tensors from the fused path. The fused path now
+falls back for `head_dim < 16`, non-power-of-two head dimensions,
+non-power-of-two QJL widths, or key sets larger than the fixed text-key tile.
+
 A same-process CUDA microcheck on the RTX 4070 compared fused output against
 the materialized Triton score path for a `1x20x64x64` query and `77` packed text
 keys:
 
 ```text
 max_delta=0.000244140625
-fused_ms_per_iter=0.1641
-materialized_ms_per_iter=0.1953
+fused_in_kernel_qproj_ms_per_iter=0.0913
+materialized_ms_per_iter=0.1985
 ```
-
-The fused kernel currently still materializes rotated query and QJL-projected
-query tensors before launch. That leaves query-side projection fusion as the
-next performance slice.

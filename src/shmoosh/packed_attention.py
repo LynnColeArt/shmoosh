@@ -114,7 +114,8 @@ def triton_packed_key_attention_output(
         raise RuntimeError("triton is required for fused packed-key attention")
     if not _can_use_fused_triton_attention(query, block, value, block_k=block_k):
         raise ValueError(
-            "fused Triton packed-key attention requires CUDA tensors and "
+            "fused Triton packed-key attention requires CUDA tensors, "
+            "fused-compatible dimensions, and "
             f"key_tokens <= {block_k}"
         )
 
@@ -125,23 +126,13 @@ def triton_packed_key_attention_output(
     batch, heads, q_tokens, head_dim = (int(size) for size in query.shape)
     key_tokens = int(block.shape[2])
     head_like = batch * heads
-    query_f = query.to(dtype=torch.float32)
+    query_input = query.contiguous()
     rotation = resources.rotation.to(device=query.device, dtype=torch.float32)
     codebook = resources.codebook.to(device=query.device, dtype=torch.float32)
-    q_rot = torch.matmul(query_f, rotation.T).contiguous().reshape(
-        head_like,
-        q_tokens,
-        head_dim,
-    )
 
     effective_qjl_bits = _effective_qjl_bits(block, resources)
     if effective_qjl_bits:
         qjl_matrix = resources.qjl_matrix.to(device=query.device, dtype=torch.float32)
-        q_proj = torch.matmul(query_f, qjl_matrix.T).contiguous().reshape(
-            head_like,
-            q_tokens,
-            effective_qjl_bits,
-        )
         residual_signs = block.residual_signs.contiguous().reshape(
             head_like,
             key_tokens,
@@ -151,7 +142,7 @@ def triton_packed_key_attention_output(
             dtype=torch.float32
         ).contiguous().reshape(head_like, key_tokens)
     else:
-        q_proj = torch.empty((1,), device=query.device, dtype=torch.float32)
+        qjl_matrix = torch.empty((1,), device=query.device, dtype=torch.float32)
         residual_signs = torch.empty((1,), device=query.device, dtype=torch.uint8)
         residual_norms = torch.empty((1,), device=query.device, dtype=torch.float32)
 
@@ -164,7 +155,7 @@ def triton_packed_key_attention_output(
         head_like,
         key_tokens,
     )
-    value_f = value.to(device=query.device, dtype=torch.float32).contiguous().reshape(
+    value_input = value.to(device=query.device).contiguous().reshape(
         head_like,
         key_tokens,
         head_dim,
@@ -176,14 +167,15 @@ def triton_packed_key_attention_output(
     )
     grid = (triton.cdiv(q_tokens, block_q), head_like)
     _packed_key_attention_output_kernel[grid](
-        q_rot,
-        q_proj,
+        query_input,
+        rotation,
+        qjl_matrix,
         codes,
         norms,
         residual_signs,
         residual_norms,
         codebook,
-        value_f,
+        value_input,
         output,
         q_tokens,
         key_tokens,
@@ -303,8 +295,19 @@ def _can_use_fused_triton_attention(
         and getattr(block.codes, "is_cuda", False)
         and block.codes.device == query.device
         and value.device == query.device
+        and block.head_dim >= 16
+        and _is_power_of_two(block.head_dim)
+        and _supports_fused_qjl_width(block.qjl_bits)
         and int(block.shape[2]) <= block_k
     )
+
+
+def _supports_fused_qjl_width(qjl_bits: int) -> bool:
+    return qjl_bits == 0 or _is_power_of_two(qjl_bits)
+
+
+def _is_power_of_two(value: int) -> bool:
+    return value > 0 and (value & (value - 1)) == 0
 
 
 def _load_torch():
@@ -322,8 +325,9 @@ if triton is not None and tl is not None:
 
     @triton.jit(do_not_specialize=["q_tokens", "key_tokens"])
     def _packed_key_attention_output_kernel(
-        q_rot_ptr,
-        q_proj_ptr,
+        query_ptr,
+        rotation_ptr,
+        qjl_matrix_ptr,
         codes_ptr,
         norms_ptr,
         residual_signs_ptr,
@@ -350,43 +354,46 @@ if triton is not None and tl is not None:
         dim_offsets = tl.arange(0, HEAD_DIM)
         q_mask = q_offsets < q_tokens
         k_mask = k_offsets < key_tokens
-        scores = tl.zeros((BLOCK_Q, BLOCK_K), dtype=tl.float32)
+        query_values = tl.load(
+            query_ptr
+            + head_like * q_tokens * HEAD_DIM
+            + q_offsets[:, None] * HEAD_DIM
+            + dim_offsets[None, :],
+            mask=q_mask[:, None],
+            other=0.0,
+        ).to(tl.float32)
 
-        for dim_index in tl.static_range(0, HEAD_DIM):
-            q_values = tl.load(
-                q_rot_ptr
-                + head_like * q_tokens * HEAD_DIM
-                + q_offsets * HEAD_DIM
-                + dim_index,
-                mask=q_mask,
-                other=0.0,
-            )[:, None]
-            bit_position = dim_index * BITS
-            byte_index = bit_position // 8
-            bit_offset = bit_position % 8
-            code_byte = tl.load(
-                codes_ptr
-                + head_like * key_tokens * CODE_BYTES
-                + k_offsets * CODE_BYTES
-                + byte_index,
-                mask=k_mask,
-                other=0,
-            ).to(tl.uint32)
-            combined = code_byte
-            if bit_offset + BITS > 8:
-                next_byte = tl.load(
-                    codes_ptr
-                    + head_like * key_tokens * CODE_BYTES
-                    + k_offsets * CODE_BYTES
-                    + byte_index
-                    + 1,
-                    mask=k_mask & ((byte_index + 1) < CODE_BYTES),
-                    other=0,
-                ).to(tl.uint32)
-                combined = combined | (next_byte << 8)
-            code = (combined >> bit_offset) & ((1 << BITS) - 1)
-            code_values = tl.load(codebook_ptr + code, mask=k_mask, other=0.0)
-            scores += q_values * code_values[None, :]
+        rotation_t = tl.load(
+            rotation_ptr
+            + dim_offsets[None, :] * HEAD_DIM
+            + dim_offsets[:, None]
+        )
+        q_rot = tl.dot(query_values, rotation_t, input_precision="ieee")
+
+        bit_position = dim_offsets[:, None] * BITS
+        byte_index = bit_position // 8
+        bit_offset = bit_position % 8
+        code_byte = tl.load(
+            codes_ptr
+            + head_like * key_tokens * CODE_BYTES
+            + k_offsets[None, :] * CODE_BYTES
+            + byte_index,
+            mask=k_mask[None, :],
+            other=0,
+        ).to(tl.uint32)
+        next_byte = tl.load(
+            codes_ptr
+            + head_like * key_tokens * CODE_BYTES
+            + k_offsets[None, :] * CODE_BYTES
+            + byte_index
+            + 1,
+            mask=k_mask[None, :] & ((byte_index + 1) < CODE_BYTES),
+            other=0,
+        ).to(tl.uint32)
+        combined = code_byte | (next_byte << 8)
+        code = (combined >> bit_offset) & ((1 << BITS) - 1)
+        code_values = tl.load(codebook_ptr + code, mask=k_mask[None, :], other=0.0)
+        scores = tl.dot(q_rot, code_values, input_precision="ieee")
 
         key_norms = tl.load(
             norms_ptr + head_like * key_tokens + k_offsets,
@@ -396,29 +403,26 @@ if triton is not None and tl is not None:
         scores *= (key_norms * INV_SQRT_D)[None, :]
 
         if QJL_BITS > 0:
-            correction = tl.zeros((BLOCK_Q, BLOCK_K), dtype=tl.float32)
-            for qjl_index in tl.static_range(0, QJL_BITS):
-                projected_q = tl.load(
-                    q_proj_ptr
-                    + head_like * q_tokens * QJL_BITS
-                    + q_offsets * QJL_BITS
-                    + qjl_index,
-                    mask=q_mask,
-                    other=0.0,
-                )[:, None]
-                sign_byte_index = qjl_index // 8
-                sign_bit_offset = qjl_index % 8
-                sign_byte = tl.load(
-                    residual_signs_ptr
-                    + head_like * key_tokens * SIGN_BYTES
-                    + k_offsets * SIGN_BYTES
-                    + sign_byte_index,
-                    mask=k_mask,
-                    other=0,
-                ).to(tl.uint32)
-                sign_bit = (sign_byte >> sign_bit_offset) & 1
-                signs = tl.where(sign_bit == 1, 1.0, -1.0)
-                correction += projected_q * signs[None, :]
+            qjl_offsets = tl.arange(0, QJL_BITS)
+            qjl_t = tl.load(
+                qjl_matrix_ptr
+                + qjl_offsets[None, :] * HEAD_DIM
+                + dim_offsets[:, None]
+            )
+            q_proj = tl.dot(query_values, qjl_t, input_precision="ieee")
+            sign_byte_index = qjl_offsets[:, None] // 8
+            sign_bit_offset = qjl_offsets[:, None] % 8
+            sign_byte = tl.load(
+                residual_signs_ptr
+                + head_like * key_tokens * SIGN_BYTES
+                + k_offsets[None, :] * SIGN_BYTES
+                + sign_byte_index,
+                mask=k_mask[None, :],
+                other=0,
+            ).to(tl.uint32)
+            sign_bit = (sign_byte >> sign_bit_offset) & 1
+            signs = tl.where(sign_bit == 1, 1.0, -1.0)
+            correction = tl.dot(q_proj, signs, input_precision="ieee")
             residual_norm_values = tl.load(
                 residual_norms_ptr + head_like * key_tokens + k_offsets,
                 mask=k_mask,
@@ -435,7 +439,7 @@ if triton is not None and tl is not None:
             + dim_offsets[None, :],
             mask=k_mask[:, None],
             other=0.0,
-        )
+        ).to(tl.float32)
         output = tl.dot(weights, values, input_precision="ieee")
         tl.store(
             out_ptr

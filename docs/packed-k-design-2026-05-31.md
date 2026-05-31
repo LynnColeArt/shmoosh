@@ -247,16 +247,21 @@ The packed backend now also routes CUDA `auto`/`triton` attention through a
 fused Triton output kernel when the key sequence fits in the fixed `128` token
 text-key tile. That kernel keeps V exact, consumes packed K directly, applies
 softmax, and writes the final attention output without allocating a full score
-tensor. Larger key sets keep using the materialized Triton score fallback.
+tensor. It also performs query rotation and QJL projection inside the kernel for
+fused-compatible dimensions, avoiding separate `q_rot` and `q_proj` tensors.
+Larger key sets and unsupported dimensions keep using the materialized Triton
+score fallback.
 
 ## Kernel Direction
 
 The current production path is a staged Torch/Triton design:
 
 1. Encode K after `to_k` for selected modules and selected timesteps.
-2. In the attention score kernel, consume packed codes directly.
-3. For text-key tiles, fuse softmax and exact-V output accumulation into the
-   packed-K Triton kernel.
+2. For fused-compatible text-key tiles, consume packed codes directly, rotate
+   query tiles, apply QJL correction, softmax, and exact-V accumulation inside
+   the packed-K Triton kernel.
+3. Avoid reconstructing full K vectors or allocating full score, `q_rot`, or
+   `q_proj` tensors on the fused path.
 4. For larger key sets, keep V exact and use existing attention output
    accumulation as a fallback.
 
@@ -266,9 +271,9 @@ residual correction. A temporary reconstruct-then-attend kernel is useful for
 debugging, but it should not be treated as the production target because it
 reintroduces the fp16 K bandwidth.
 
-The next kernel step is to fold query rotation and QJL projection into the
-fused kernel, reducing the extra projected-query tensors that still surround the
-current fused output launch.
+The next kernel step is broadening the fused path beyond the single `128` token
+tile, which is needed before self-attention key sets can avoid the materialized
+score fallback.
 
 ## Acceptance
 
