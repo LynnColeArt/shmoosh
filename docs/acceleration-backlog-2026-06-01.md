@@ -86,13 +86,19 @@ The non-overlapping handoff policy, with cross-attention active from 30%-70%
 and self-attention active from 70%-100%, was faster at `1.088x` mean speedup
 but still lower quality at `48.67 dB` minimum PSNR. Composition drift is
 therefore not only same-step overlap.
+The no-QJL streaming attention auto default now uses `BLOCK_K=32` for large-key
+no-QJL attention while keeping QJL on `BLOCK_K=16`. Synthetic 1024-token
+K7/no-QJL attention improved from `0.8348ms` to `0.6753ms`, but the image trace
+only moved packed attention from `0.0336s` to `0.0276s` while scheduled
+quantized time stayed flat at about `0.073s`.
 
 The next slice should be:
 
 1. Keep the cached cross-attention policy as the baseline policy layer.
 2. Treat late K7/no-QJL self-attention as a separate high-fidelity policy mode,
    not a default add-on to cached cross-attention.
-3. Consider a dedicated no-QJL streaming kernel tile default if repeated image
-   traces keep favoring `block_k=32`.
+3. Look for the next self-attention speed lever outside the key tile default:
+   reduce encode overhead, fuse encode+attention, or try CUDA graphs/compile for
+   fixed 1024 runs.
 4. Revisit cross+self composition only after adding a new control surface, such
    as per-prompt policy choice or a stricter image-quality gate.

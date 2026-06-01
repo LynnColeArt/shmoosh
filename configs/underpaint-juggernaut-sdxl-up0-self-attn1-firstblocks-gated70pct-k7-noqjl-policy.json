@@ -43,6 +43,25 @@
       "mean_packed_encode_ms": 1.1202602698985074,
       "mean_packed_attention_ms": 1.8646421117915049
     },
+    "processor_trace_auto_noqjl_tile32": {
+      "output_dir": "captures/image-ab-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-1024-trace-tile32-reading-nook",
+      "prompt": "reading-nook-seed1-1024",
+      "mse": 0.000006508050773845753,
+      "mae": 0.000858705781865865,
+      "psnr_db": 51.86549067487634,
+      "baseline_seconds": 11.646725310012698,
+      "shmoosh_seconds": 9.90820543281734,
+      "speedup": 1.1754626394237992,
+      "record_count": 228,
+      "scheduled_exact_count": 42,
+      "scheduled_quantized_count": 18,
+      "packed_encode_seconds": 0.02523185429163277,
+      "packed_attention_seconds": 0.027647924842312932,
+      "scheduled_quantized_seconds": 0.0732600474730134,
+      "mean_scheduled_quantized_ms": 4.070002637389634,
+      "mean_packed_encode_ms": 1.4017696828684872,
+      "mean_packed_attention_ms": 1.5359958245729406
+    },
     "note": "This is the preferred self-attention policy so far. K7/no-QJL needs late activation, but at 70% it beats the K6/QJL128 self-attention policy on both fidelity and mean runtime."
   },
   "default": {

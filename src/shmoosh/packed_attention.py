@@ -15,7 +15,8 @@ from shmoosh.packed_scores import (
 _FUSED_TRITON_SINGLE_KEY_TILE = 128
 _FUSED_TRITON_QUERY_TILE = 16
 _FUSED_TRITON_STREAMING_QUERY_TILE = 32
-_FUSED_TRITON_STREAMING_KEY_TILE = 16
+_FUSED_TRITON_STREAMING_QJL_KEY_TILE = 16
+_FUSED_TRITON_STREAMING_NO_QJL_KEY_TILE = 32
 _FUSED_TRITON_KEY_TILE = _FUSED_TRITON_SINGLE_KEY_TILE
 
 
@@ -177,11 +178,7 @@ def triton_packed_key_attention_output(
     if key_tokens > block_k:
         if block_q == _FUSED_TRITON_QUERY_TILE:
             query_tile = _FUSED_TRITON_STREAMING_QUERY_TILE
-        key_tile = (
-            _FUSED_TRITON_STREAMING_KEY_TILE
-            if block_k == _FUSED_TRITON_KEY_TILE
-            else block_k
-        )
+        key_tile = _select_streaming_key_tile(block_k, effective_qjl_bits)
         kernel = _packed_key_attention_streaming_kernel
     grid = (triton.cdiv(q_tokens, query_tile), head_like)
     kernel[grid](
@@ -334,6 +331,14 @@ def _can_launch_fused_triton_attention(
 
 def _supports_fused_qjl_width(qjl_bits: int) -> bool:
     return qjl_bits == 0 or _is_power_of_two(qjl_bits)
+
+
+def _select_streaming_key_tile(block_k: int, effective_qjl_bits: int) -> int:
+    if block_k != _FUSED_TRITON_KEY_TILE:
+        return block_k
+    if effective_qjl_bits:
+        return _FUSED_TRITON_STREAMING_QJL_KEY_TILE
+    return _FUSED_TRITON_STREAMING_NO_QJL_KEY_TILE
 
 
 def _is_power_of_two(value: int) -> bool:

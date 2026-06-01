@@ -57,6 +57,27 @@ Tile readout: widening the streaming key tile helps no-QJL at `block_k=32`, but
 hurts or fails with QJL128. This points toward separate kernel tuning for
 QJL-heavy and no-QJL self-attention.
 
+## Auto Tile Default
+
+The fused Triton attention default now keeps QJL streaming attention on the
+conservative `BLOCK_K=16` tile but uses `BLOCK_K=32` for large-key no-QJL
+attention when the caller leaves `block_k` on auto.
+
+Synthetic 1024-token rerun after the change:
+
+```text
+captures/self-attention-variant-bench-1024-auto-noqjl-tile32
+```
+
+| Variant | Total ms | Encode ms | Attention ms | Relative RMSE |
+| --- | ---: | ---: | ---: | ---: |
+| K7, no QJL | 1.2598 | 0.5865 | 0.6753 | 0.023998 |
+| K6 + QJL128 | 3.5873 | 1.2450 | 2.4736 | 0.030060 |
+
+The K7/no-QJL synthetic attention time improved versus the earlier auto run
+(`0.8348ms` to `0.6753ms`). QJL remains on the smaller tile because wider QJL
+tiles can run into shared-memory pressure on the 4070.
+
 ## Image-Level Validation
 
 The synthetic result did not transfer at a 50% denoising gate:
@@ -121,6 +142,23 @@ Trace readout: the quality win is not just coming from hiding the policy later.
 The no-QJL path is materially lighter per quantized call too. The residual
 projection and residual-sign packing phases disappear, and packed attention
 drops from `4.4311ms` per call to `1.8646ms` per call.
+
+After the no-QJL auto tile change, the same reading-nook trace produced:
+
+```text
+captures/image-ab-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-1024-trace-tile32-reading-nook
+```
+
+| Trace | Packed encode s | Packed attention s | Quantized total s | PSNR |
+| --- | ---: | ---: | ---: | ---: |
+| K7/no-QJL auto before tile change | 0.0202 | 0.0336 | 0.0732 | 52.07 dB |
+| K7/no-QJL auto with no-QJL `BLOCK_K=32` | 0.0252 | 0.0276 | 0.0733 | 51.87 dB |
+
+The image trace confirms the attention-kernel improvement, but total scheduled
+quantized time is flat because encode-side timing moved in the other direction
+on this run. Keep the tile change because it is directionally correct for the
+streaming no-QJL kernel, but do not count it as an end-to-end image speed win
+yet.
 
 ## Cross + Self Composition
 
