@@ -153,6 +153,17 @@ quality was near-exact (`0.000310` relative RMSE), but attention slowed sharply
 (`1.3738ms` versus `0.6771ms`) because the representation reads `132`
 bytes/vector instead of packed K7's `60`. Keep this as a diagnostic path; do
 not promote direct rotated K as the 1024 self-attention runtime format.
+External prior art is summarized in
+`docs/external-prior-art-2026-06-01.md`. The key correction is that Shmoosh
+already computes first-order codebook-dot attention from packed K inside
+Triton; the next useful question is whether the K7/no-QJL/head_dim=64 path can
+be made less generic and cheaper to interpret.
+The K7/head_dim=64 specialized unpack probe is recorded in
+`docs/k7-head64-unpack-probe-2026-06-01.md`. A hardcoded 7-byte/8-code unpack
+kernel was correctness-equivalent, but much slower than the generic packed
+kernel (`1.5081ms` attention versus `0.6445ms`), so it was not retained in
+runtime code. The likely culprit is register pressure and rebuilding the full
+code-value tile through many `where` operations.
 
 The next slice should be:
 
