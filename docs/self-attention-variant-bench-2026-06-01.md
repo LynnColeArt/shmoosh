@@ -150,20 +150,58 @@ Composition readout: this is faster than the K6/QJL128 70% self-attention
 composition, but lower quality. Keep it as a speed/quality tradeoff, not as the
 default policy.
 
+## Restricted Composition
+
+The processor trace ranked the K7/no-QJL self-attention modules by quantized
+runtime:
+
+| Module | Mean quantized ms |
+| --- | ---: |
+| `up_blocks.0.attentions.1.transformer_blocks.0.attn1` | 3.7710 |
+| `up_blocks.0.attentions.2.transformer_blocks.0.attn1` | 3.8903 |
+| `up_blocks.0.attentions.0.transformer_blocks.0.attn1` | 4.5308 |
+
+Two restricted cross+self policies were tested:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-cross-cache-self-attn1-gated70pct-k5-k7-noqjl-a1-policy.json
+configs/underpaint-juggernaut-sdxl-up0-cross-cache-self-attn1-gated70pct-k5-k7-noqjl-a1-a2-policy.json
+```
+
+Three-case 1024 comparison:
+
+| Policy | Mean speedup | Min PSNR | Mean PSNR | Max MSE |
+| --- | ---: | ---: | ---: | ---: |
+| cached cross-attention only | 1.046x | 49.40 dB | 52.59 dB | 0.00001148 |
+| cross + K7/no-QJL self `a1` | 1.053x | 49.02 dB | 52.26 dB | 0.00001253 |
+| cross + K7/no-QJL self `a1+a2` | 1.066x | 48.49 dB | 51.95 dB | 0.00001416 |
+| cross + K7/no-QJL self `a0+a1+a2` | 1.058x | 48.50 dB | 51.44 dB | 0.00001413 |
+
+Restricted composition readout: dropping the heaviest `a0` self-attention module
+does help quality versus the full K7/no-QJL composition, and the two-module
+variant is the fastest K7/no-QJL cross+self result so far. But neither
+restricted self-attention policy beats cached cross-attention alone on fidelity.
+For now, K7/no-QJL self-attention remains a strong standalone denoising-layer
+policy, not the default add-on to the cross-cache policy.
+
 ## Interpretation
 
-Two things are now clearer:
+Three things are now clearer:
 
 1. QJL is not universally worth its cost in 1024-token self-attention. K7/no-QJL
    is a serious candidate when activated late.
 2. Synthetic attention metrics still cannot replace image-level trajectory
    tests. The same K7/no-QJL policy that looked excellent synthetically failed
    at 50% and succeeded at 70%.
+3. Cross-cache and late self-attention are not simply additive yet. Restricted
+   self-attention reduces the composition penalty, but cached cross-attention
+   alone still has the better fidelity/runtime balance.
 
 Next slice:
 
-1. Test a cross+self composition with cross attention held at the current
-   cached policy but self-attention restricted to only the strongest one or two
-   K7/no-QJL modules.
+1. Treat cached cross-attention and late K7/no-QJL self-attention as separate
+   policy modes until a better composition rule is found.
 2. Consider a dedicated no-QJL streaming kernel tile default if repeated image
    traces keep favoring `block_k=32`.
+3. Revisit composition through timestep separation, such as ending cross-cache
+   before self-attention wakes up.

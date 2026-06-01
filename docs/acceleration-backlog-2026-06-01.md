@@ -76,11 +76,19 @@ and 18 quantized calls, with packed encode at `0.0202s`, packed attention at
 `0.0336s`, and scheduled quantized time at `0.0732s`. Compared with the older
 K6/QJL128 self-attention trace, mean quantized call time fell from `7.8270ms`
 to `4.0640ms`.
+Restricted cross+self composition then tested the lightest one and two
+K7/no-QJL self-attention modules. One-module composition improved quality over
+the full three-self-module composition, but cached cross-attention alone still
+had the better fidelity/runtime balance: `49.40 dB` min PSNR and `1.046x` mean
+speedup for cross-cache only versus `49.02 dB` and `1.053x` for one-module
+self composition.
 
 The next slice should be:
 
 1. Keep the cached cross-attention policy as the baseline policy layer.
-2. Test cross+self composition with self-attention restricted to only the
-   strongest one or two K7/no-QJL modules.
+2. Treat late K7/no-QJL self-attention as a separate high-fidelity policy mode,
+   not a default add-on to cached cross-attention.
 3. Consider a dedicated no-QJL streaming kernel tile default if repeated image
    traces keep favoring `block_k=32`.
+4. Revisit cross+self composition with non-overlapping timestep windows, such
+   as ending cross-cache before late self-attention starts.
