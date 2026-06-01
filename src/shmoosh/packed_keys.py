@@ -232,10 +232,13 @@ def _encode_packed_keys_torch(
     _batch, _heads, _tokens, head_dim = (int(size) for size in keys.shape)
     rotation = resources.rotation.to(device=device, dtype=torch.float32)
     codebook = resources.codebook.to(device=device, dtype=torch.float32)
+    boundaries = resources.boundaries.to(device=device, dtype=torch.float32)
     if rotation.shape != (head_dim, head_dim):
         raise ValueError("score resources rotation does not match key head dimension")
     if codebook.numel() != (1 << bits):
         raise ValueError("score resources codebook does not match key bit depth")
+    if boundaries.numel() != codebook.numel() - 1:
+        raise ValueError("score resources boundaries do not match key bit depth")
 
     timing_metadata = {
         "bits": bits,
@@ -266,7 +269,6 @@ def _encode_packed_keys_torch(
     ):
         rotated = torch.matmul(unit, rotation.T)
         normalized = rotated * sqrt(head_dim)
-        boundaries = ((codebook[:-1] + codebook[1:]) * 0.5).contiguous()
         indices = torch.bucketize(
             normalized.contiguous(),
             boundaries,

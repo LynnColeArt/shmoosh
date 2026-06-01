@@ -7,6 +7,7 @@ from shmoosh.packed_keys import encode_packed_keys
 from shmoosh.packed_scores import (
     build_score_resources,
     packed_key_scores,
+    score_resources_from_codec,
     torch_packed_key_scores,
     triton,
     triton_packed_key_scores,
@@ -53,6 +54,18 @@ def test_build_score_resources_rejects_mismatched_codec() -> None:
 
     with pytest.raises(ValueError, match="codec parameters"):
         build_score_resources(block, codec=codec)
+
+
+def test_score_resources_include_codebook_boundaries() -> None:
+    codec = ShmooshCodec(dim=8, bits=4, qjl_bits=0, seed=3, codebook_samples=512)
+
+    resources = score_resources_from_codec(codec, device="cpu")
+
+    assert resources.boundaries.shape == (15,)
+    assert torch.allclose(
+        resources.boundaries,
+        (resources.codebook[:-1] + resources.codebook[1:]) * 0.5,
+    )
 
 
 @pytest.mark.skipif(

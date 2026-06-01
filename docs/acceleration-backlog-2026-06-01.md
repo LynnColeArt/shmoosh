@@ -97,6 +97,8 @@ from `0.0147s` to `0.0100s`, and packed encode dropped from `0.0252s` to
 `0.0195s`. Whole scheduled quantized time remained noisy at about this scale.
 The three-case 1024 suite after this change cleared at `51.87 dB` minimum PSNR
 and `1.084x` mean speedup.
+Caching codebook bucket boundaries removed repeated constant setup from encode,
+but the synthetic rerun was noisy and did not produce a separate K7 speed win.
 
 The next slice should be:
 

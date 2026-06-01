@@ -101,6 +101,12 @@ captures/self-attention-variant-bench-1024-fast-pack-noqjl-v2
 For the preferred K7/no-QJL policy, synthetic encode time improved from
 `0.5865ms` after the tile change to `0.3949ms`.
 
+A follow-up cached the codebook bucket boundaries in `PackedScoreResources`
+instead of recomputing them inside every encode call. The synthetic rerun at
+`captures/self-attention-variant-bench-1024-fast-pack-boundaries-noqjl` was
+noisy and is not counted as a separate speed win: K6/K5 encode moved slightly
+down, but K7 encode did not.
+
 ## Image-Level Validation
 
 The synthetic result did not transfer at a 50% denoising gate:

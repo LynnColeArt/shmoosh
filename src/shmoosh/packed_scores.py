@@ -21,6 +21,7 @@ class PackedScoreResources:
 
     rotation: Any
     codebook: Any
+    boundaries: Any
     qjl_matrix: Any | None
 
 
@@ -68,6 +69,10 @@ def score_resources_from_codec(
     torch = _load_torch()
     target_device = torch.device(device)
     target_dtype = torch.float32 if dtype is None else dtype
+    codebook = torch.from_numpy(codec.codebook).to(
+        device=target_device,
+        dtype=target_dtype,
+    )
     qjl_matrix = (
         None
         if codec.qjl_matrix is None
@@ -80,10 +85,8 @@ def score_resources_from_codec(
             device=target_device,
             dtype=target_dtype,
         ),
-        codebook=torch.from_numpy(codec.codebook).to(
-            device=target_device,
-            dtype=target_dtype,
-        ),
+        codebook=codebook,
+        boundaries=((codebook[:-1] + codebook[1:]) * 0.5).contiguous(),
         qjl_matrix=qjl_matrix,
     )
 
