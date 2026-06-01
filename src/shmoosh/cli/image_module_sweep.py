@@ -16,14 +16,20 @@ from shmoosh.cli.image_ab_smoke import (
     _move_pipeline,
     _pipeline_kwargs,
     _print_modules,
+    _resolve_window_step,
     _run_image,
     _select_attention_modules,
     _select_component,
     _set_progress_bar,
+    _uses_scheduled_window,
     _warm_packed_processors,
     _write_diff_heatmap,
 )
-from shmoosh.diffusers_processor import ShmooshAttnProcessor
+from shmoosh.diffusers_processor import (
+    DenoisingStepState,
+    ScheduledShmooshAttnProcessor,
+    ShmooshAttnProcessor,
+)
 
 
 def main() -> None:
@@ -97,6 +103,27 @@ def main() -> None:
         help="Also run each module through the custom processor with exact K and exact V.",
     )
     parser.add_argument(
+        "--quantize-start-step",
+        type=int,
+        default=0,
+        help="First denoising step that uses the Shmoosh processor for each candidate module.",
+    )
+    parser.add_argument(
+        "--quantize-end-step",
+        type=int,
+        help="First denoising step after the active Shmoosh window.",
+    )
+    parser.add_argument(
+        "--quantize-start-percent",
+        type=float,
+        help="First denoising fraction that uses the Shmoosh processor, rounded up to a step.",
+    )
+    parser.add_argument(
+        "--quantize-end-percent",
+        type=float,
+        help="First denoising fraction after the active Shmoosh window, rounded up to a step.",
+    )
+    parser.add_argument(
         "--candidate-psnr-db",
         type=float,
         default=30.0,
@@ -105,6 +132,7 @@ def main() -> None:
     args = parser.parse_args()
     if not args.list_modules and not args.prompt:
         raise SystemExit("--prompt is required unless --list-modules is used.")
+    _validate_window_args(args)
 
     torch = _load_torch_and_diffusers()
     dtype = {
@@ -131,6 +159,12 @@ def main() -> None:
     _set_progress_bar(pipe)
 
     common_kwargs = _pipeline_kwargs(args)
+    window = _sweep_window_config(args)
+    step_state = (
+        DenoisingStepState(total_steps=args.steps)
+        if _uses_scheduled_window(window)
+        else None
+    )
     baseline_image, baseline_stats = _run_image(
         pipe,
         torch=torch,
@@ -169,6 +203,7 @@ def main() -> None:
                         module=module,
                         module_index=module_index,
                         policy_name="exact_processor",
+                        step_state=step_state,
                         processor=ShmooshAttnProcessor(
                             bits=args.bits,
                             qjl_bits=args.qjl_bits,
@@ -199,6 +234,7 @@ def main() -> None:
                     module=module,
                     module_index=module_index,
                     policy_name="shmoosh",
+                    step_state=step_state,
                     processor=ShmooshAttnProcessor(
                         bits=args.bits,
                         qjl_bits=args.qjl_bits,
@@ -244,6 +280,7 @@ def main() -> None:
             "attention_backend": args.attention_backend,
             "packed_backend": args.packed_backend,
         },
+        "quantize_window": window | _resolved_sweep_window_config(args),
         "baseline": baseline_stats | {"image": str(baseline_path)},
         "suggested_policy": suggested_policy,
         "rows": rows,
@@ -266,11 +303,26 @@ def _run_module_policy(
     module: Any,
     module_index: int,
     policy_name: str,
+    step_state: DenoisingStepState | None,
     processor: ShmooshAttnProcessor,
 ) -> dict[str, Any]:
     module_dir = output_dir / _module_dirname(module_index, module_name, policy_name)
     module_dir.mkdir(parents=True, exist_ok=True)
-    _install_processor([(module_name, module)], processor)
+    active_processor: Any = processor
+    window = _sweep_window_config(args)
+    if _uses_scheduled_window(window):
+        if step_state is None:
+            raise RuntimeError("scheduled module sweeps require step_state")
+        active_processor = ScheduledShmooshAttnProcessor(
+            original_processor=getattr(module, "processor", None),
+            shmoosh_processor=processor,
+            step_state=step_state,
+            quantize_start_step=window["quantize_start_step"],
+            quantize_end_step=window["quantize_end_step"],
+            quantize_start_percent=window["quantize_start_percent"],
+            quantize_end_percent=window["quantize_end_percent"],
+        )
+    _install_processor([(module_name, module)], active_processor)
     _warm_packed_processors([(module_name, module)], torch=torch, args=args)
 
     shmoosh_image, shmoosh_stats = _run_image(
@@ -279,6 +331,7 @@ def _run_module_policy(
         args=args,
         common_kwargs=common_kwargs,
         label=f"{policy_name}:{module_index:03d}",
+        step_state=step_state,
     )
 
     shmoosh_path = module_dir / "shmoosh.png"
@@ -304,6 +357,8 @@ def _run_module_policy(
         "value_bits": processor.value_bits,
         "qjl_bits": processor.qjl_bits,
         "codebook_samples": processor.codebook_samples,
+        **window,
+        **_resolved_sweep_window_config(args),
         "mse": image_metrics["mse"],
         "mae": image_metrics["mae"],
         "psnr_db": image_metrics["psnr_db"],
@@ -337,6 +392,7 @@ def _run_module_policy(
             "attention_backend": processor.attention_backend,
             "packed_backend": processor.packed_backend,
         },
+        "quantize_window": window | _resolved_sweep_window_config(args),
         "baseline": baseline_stats,
         "shmoosh": shmoosh_stats,
         "image_metrics": image_metrics,
@@ -395,6 +451,8 @@ def _suggest_policy(args: argparse.Namespace, rows: list[dict[str, Any]]) -> dic
             "attention_backend": args.attention_backend,
             "packed_backend": args.packed_backend,
         },
+        "quantize_window": _sweep_window_config(args)
+        | _resolved_sweep_window_config(args),
         "quantized_modules": [_policy_module(row) for row in candidates],
         "exact_modules": [_policy_module(row) for row in exact],
     }
@@ -407,6 +465,10 @@ def _policy_module(row: dict[str, Any]) -> dict[str, Any]:
         "mse": row["mse"],
         "mae": row["mae"],
         "psnr_db": row["psnr_db"],
+        "quantize_start_step": row["quantize_start_step"],
+        "quantize_end_step": row["quantize_end_step"],
+        "quantize_start_percent": row["quantize_start_percent"],
+        "quantize_end_percent": row["quantize_end_percent"],
     }
 
 
@@ -439,6 +501,12 @@ def _write_summary(
         "value_bits",
         "qjl_bits",
         "codebook_samples",
+        "quantize_start_step",
+        "quantize_end_step",
+        "quantize_start_percent",
+        "quantize_end_percent",
+        "resolved_quantize_start_step",
+        "resolved_quantize_end_step",
         "mse",
         "mae",
         "psnr_db",
@@ -463,8 +531,54 @@ def _print_summary(rows: list[dict[str, Any]]) -> None:
         print(
             f"{row['policy']} module={row['module_index']:03d} "
             f"mse={row['mse']:.8f} mae={row['mae']:.8f} "
-            f"psnr={row['psnr_db']:.2f}dB {row['module_name']}"
+            f"psnr={row['psnr_db']:.2f}dB "
+            f"window={row['resolved_quantize_start_step']}:"
+            f"{row['resolved_quantize_end_step']} {row['module_name']}"
         )
+
+
+def _sweep_window_config(args: argparse.Namespace) -> dict[str, int | float | None]:
+    return {
+        "quantize_start_step": int(args.quantize_start_step),
+        "quantize_end_step": args.quantize_end_step,
+        "quantize_start_percent": args.quantize_start_percent,
+        "quantize_end_percent": args.quantize_end_percent,
+    }
+
+
+def _resolved_sweep_window_config(args: argparse.Namespace) -> dict[str, int | None]:
+    window = _sweep_window_config(args)
+    return {
+        "resolved_quantize_start_step": _resolve_window_step(
+            absolute_step=window["quantize_start_step"],
+            percent=window["quantize_start_percent"],
+            total_steps=args.steps,
+            default=0,
+        ),
+        "resolved_quantize_end_step": _resolve_window_step(
+            absolute_step=window["quantize_end_step"],
+            percent=window["quantize_end_percent"],
+            total_steps=args.steps,
+            default=None,
+        ),
+    }
+
+
+def _validate_window_args(args: argparse.Namespace) -> None:
+    for name in ("quantize_start_percent", "quantize_end_percent"):
+        value = getattr(args, name)
+        if value is not None and not 0 <= value <= 1:
+            raise SystemExit(f"--{name.replace('_', '-')} must be between 0 and 1")
+
+    if args.quantize_start_step < 0:
+        raise SystemExit("--quantize-start-step must be non-negative")
+    if args.quantize_end_step is not None and args.quantize_end_step < 0:
+        raise SystemExit("--quantize-end-step must be non-negative")
+
+    resolved = _resolved_sweep_window_config(args)
+    end_step = resolved["resolved_quantize_end_step"]
+    if end_step is not None and resolved["resolved_quantize_start_step"] >= end_step:
+        raise SystemExit("quantize window must start before it ends")
 
 
 if __name__ == "__main__":

@@ -43,13 +43,20 @@ only inside selected U-Net cross-attention modules:
 
 ## Resume After Next Slice
 
-The maple short-case trace and prompt-layer K/V cache slice are now done. The
-cache is correct and modestly useful, but selected text-key cross-attention is
-too small to be the main speed lever.
+The maple short-case trace, prompt-layer K/V cache slice, and first late-step
+self-attention smoke slice are now done. The cache is correct and modestly
+useful, but selected text-key cross-attention is too small to be the main speed
+lever. The self-attention smoke is recorded in
+`docs/self-attention-sweep-2026-06-01.md`: three K6/QJL128 `up_blocks.0.attn1`
+modules passed single-module 1024 probes with exact-first 50% activation, and
+their three-module composition passed the reading-nook 1024 prompt at
+`50.57 dB` PSNR.
 
 The next slice should be:
 
-1. Run a late-step self-attention sweep at 1024 with exact V.
-2. Keep the cached cross-attention policy as the baseline policy layer.
-3. Composition-test any self-attention candidate with the cached cross-attention
+1. Run the three-case 1024 suite for the exploratory self-attention policy.
+2. Trace the composed self-attention policy to split encode time from fused
+   attention time.
+3. Keep the cached cross-attention policy as the baseline policy layer.
+4. Composition-test any accepted self-attention candidate with the cached cross-attention
    policy before treating it as a real runtime win.
