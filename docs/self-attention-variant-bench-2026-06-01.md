@@ -242,6 +242,26 @@ fused attention kernel enough that the image suite prefers fast bit packing for
 1024 self-attention. Keep byte-code for shorter-key experiments and keep
 bit-packed K as the preferred self-attention runtime format for now.
 
+## Compact-K Kernel V2 Follow-Up
+
+The compact-K kernel follow-up is recorded separately in
+`docs/compact-k-kernel-v2-2026-06-01.md`.
+
+It kept bit-packed K as the runtime format and avoided continuation-byte loads
+for packed codes that do not cross byte boundaries. The change is small, but it
+targets the consumer-side cost that byte-code exposed.
+
+Same-code 1024 image validation then compared K6/no-QJL and K7/no-QJL at the
+same 70% self-attention gate:
+
+| Policy | Min PSNR | Mean PSNR | Mean speedup |
+| --- | ---: | ---: | ---: |
+| K6/no-QJL 70% | 50.38 dB | 52.91 dB | 1.082x |
+| K7/no-QJL 70% | 51.87 dB | 53.96 dB | 1.066x |
+
+K6/no-QJL is now a legitimate speed-mode candidate, but K7/no-QJL remains the
+preferred default because the quality margin is clearer than the runtime margin.
+
 ## Cross + Self Composition
 
 The K7/no-QJL 70% self-attention policy was also composed with the cached

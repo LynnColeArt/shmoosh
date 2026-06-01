@@ -111,6 +111,16 @@ bit-packed K7/no-QJL (`51.87 dB` minimum PSNR, `53.96 dB` mean PSNR), but mean
 speedup fell to `1.057x` versus `1.084x`. Keep byte-code as an opt-in format
 for shorter-key experiments; keep bit-packed K as the current 1024
 self-attention default.
+The compact-K kernel V2 slice is recorded in
+`docs/compact-k-kernel-v2-2026-06-01.md`. It kept bit-packed K and avoided
+continuation-byte loads when a packed code does not cross a byte boundary.
+Synthetic K6/K7 no-QJL attention improved directionally in the valid sequential
+comparison. Image validation then tested K6/no-QJL against K7/no-QJL at the
+same 70% gate. K6/no-QJL is a viable speed-mode candidate at `1.082x` mean
+speedup, but loses quality (`50.38 dB` min PSNR, `52.91 dB` mean PSNR) versus
+K7/no-QJL (`51.87 dB` min PSNR, `53.96 dB` mean PSNR). Keep K7/no-QJL as the
+preferred 1024 self-attention default; keep K6/no-QJL as an explicit speed
+tradeoff policy.
 
 The next slice should be:
 

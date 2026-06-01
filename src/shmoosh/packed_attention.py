@@ -423,6 +423,7 @@ if triton is not None and tl is not None:
             bit_position = dim_offsets[:, None] * BITS
             byte_index = bit_position // 8
             bit_offset = bit_position % 8
+            needs_next_byte = (bit_offset + BITS) > 8
             code_byte = tl.load(
                 codes_ptr
                 + head_like * key_tokens * CODE_BYTES
@@ -437,7 +438,11 @@ if triton is not None and tl is not None:
                 + k_offsets[None, :] * CODE_BYTES
                 + byte_index
                 + 1,
-                mask=k_mask[None, :] & ((byte_index + 1) < CODE_BYTES),
+                mask=(
+                    k_mask[None, :]
+                    & needs_next_byte
+                    & ((byte_index + 1) < CODE_BYTES)
+                ),
                 other=0,
             ).to(tl.uint32)
             combined = code_byte | (next_byte << 8)
@@ -579,6 +584,7 @@ if triton is not None and tl is not None:
                 bit_position = dim_offsets[:, None] * BITS
                 byte_index = bit_position // 8
                 bit_offset = bit_position % 8
+                needs_next_byte = (bit_offset + BITS) > 8
                 code_byte = tl.load(
                     codes_ptr
                     + head_like * key_tokens * CODE_BYTES
@@ -593,7 +599,11 @@ if triton is not None and tl is not None:
                     + tile_k_offsets[None, :] * CODE_BYTES
                     + byte_index
                     + 1,
-                    mask=tile_k_mask[None, :] & ((byte_index + 1) < CODE_BYTES),
+                    mask=(
+                        tile_k_mask[None, :]
+                        & needs_next_byte
+                        & ((byte_index + 1) < CODE_BYTES)
+                    ),
                     other=0,
                 ).to(tl.uint32)
                 combined = code_byte | (next_byte << 8)
