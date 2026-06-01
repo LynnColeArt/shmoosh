@@ -221,6 +221,27 @@ Aggregate:
 - max MSE: `0.00000651`
 - mean speedup: `1.084x`
 
+## Runtime V2 Byte-Code Follow-Up
+
+The byte-code runtime follow-up is recorded separately in
+`docs/self-attention-runtime-v2-2026-06-01.md`.
+
+It added `code_format="byte"` as an opt-in policy surface and validated the
+path through encode, Torch score fallback, fused Triton attention, image smoke,
+and the three-case 1024 suite.
+
+The main result is a tradeoff:
+
+| Format | Synthetic total ms | Synthetic encode ms | Synthetic attention ms | Bytes/vector | Image mean speedup |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| byte-code | 1.0223 | 0.1552 | 0.8826 | 68 | 1.057x |
+| bit-packed compare | 1.1133 | 0.4330 | 0.7665 | 60 | 1.084x |
+
+Byte-code reduces encode substantially, but its larger K payload slows the
+fused attention kernel enough that the image suite prefers fast bit packing for
+1024 self-attention. Keep byte-code for shorter-key experiments and keep
+bit-packed K as the preferred self-attention runtime format for now.
+
 ## Cross + Self Composition
 
 The K7/no-QJL 70% self-attention policy was also composed with the cached

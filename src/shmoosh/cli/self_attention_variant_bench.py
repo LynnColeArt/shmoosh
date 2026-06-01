@@ -44,6 +44,12 @@ def main() -> None:
         default="auto",
     )
     parser.add_argument(
+        "--code-format",
+        choices=["packed", "byte"],
+        default="packed",
+        help="Runtime K-code layout to benchmark.",
+    )
+    parser.add_argument(
         "--block-k",
         type=int,
         help="Optional explicit Triton streaming key tile for attention timing.",
@@ -133,6 +139,7 @@ def main() -> None:
                     "bits": bits,
                     "qjl_bits": qjl_bits,
                     "backend": args.backend,
+                    "code_format": args.code_format,
                     "block_q": args.block_q,
                     "block_k": args.block_k,
                     "error": f"{type(exc).__name__}: {exc}",
@@ -153,6 +160,7 @@ def main() -> None:
         "dtype": args.dtype,
         "device": str(device),
         "backend": args.backend,
+        "code_format": args.code_format,
         "block_q": args.block_q,
         "block_k": args.block_k,
         "warmup_iters": args.warmup_iters,
@@ -198,6 +206,7 @@ def _run_variant(
             codebook_samples=args.codebook_samples,
             codec=codec,
             resources=resources,
+            code_format=args.code_format,
         )
 
     block = encode_once()
@@ -241,6 +250,7 @@ def _run_variant(
     row = {
         "bits": bits,
         "qjl_bits": qjl_bits,
+        "code_format": block.code_format,
         "packed_bytes_per_vector": block.packed_bytes_per_vector,
         "compression_ratio_fp16": block.compression_ratio(dtype_bytes=2),
         "encode_ms_per_iter": encode_seconds * 1000 / args.iters,
@@ -338,6 +348,7 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     fieldnames = [
         "bits",
         "qjl_bits",
+        "code_format",
         "packed_bytes_per_vector",
         "compression_ratio_fp16",
         "encode_ms_per_iter",
@@ -373,6 +384,7 @@ def _print_summary(rows: list[dict[str, Any]], *, exact_ms: float) -> None:
             continue
         print(
             f"K{row['bits']} QJL{row['qjl_bits']} "
+            f"{row['code_format']} "
             f"total={row['total_ms_per_iter']:.4f}ms "
             f"encode={row['encode_ms_per_iter']:.4f}ms "
             f"attention={row['attention_ms_per_iter']:.4f}ms "

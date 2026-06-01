@@ -61,6 +61,28 @@ def test_encode_packed_keys_without_qjl_has_no_residual_payload() -> None:
     assert block.packed_key_bytes() == 1 * 2 * 5 * (4 + 4)
 
 
+def test_encode_packed_keys_byte_format_matches_reference_decode() -> None:
+    generator = torch.Generator().manual_seed(4)
+    keys = torch.randn(1, 2, 5, 8, generator=generator)
+    block = encode_packed_keys(
+        keys,
+        bits=4,
+        qjl_bits=0,
+        seed=3,
+        codebook_samples=512,
+        code_format="byte",
+    )
+    codec = ShmooshCodec(dim=8, bits=4, qjl_bits=0, seed=3, codebook_samples=512)
+    reference = torch.from_numpy(codec.decode(codec.encode(keys.numpy())))
+
+    assert block.code_format == "byte"
+    assert block.codes.shape == (1, 2, 5, 8)
+    assert block.code_bytes_per_vector == 8
+    assert block.packed_bytes_per_vector == 8 + 4
+    assert block.packed_key_bytes() == 1 * 2 * 5 * (8 + 4)
+    assert torch.allclose(block.decode(), reference)
+
+
 def test_encode_packed_keys_rejects_mismatched_codec() -> None:
     keys = torch.zeros(1, 2, 5, 8)
     codec = ShmooshCodec(dim=8, bits=4, qjl_bits=0, seed=3, codebook_samples=256)

@@ -76,6 +76,11 @@ def main() -> None:
         choices=["auto", "torch", "triton"],
         default="auto",
     )
+    parser.add_argument(
+        "--code-format",
+        choices=["packed", "byte"],
+        default="packed",
+    )
     parser.add_argument("--exact-keys", action="store_true")
     parser.add_argument("--quantize-values", action="store_true")
     parser.add_argument(

@@ -99,6 +99,18 @@ The three-case 1024 suite after this change cleared at `51.87 dB` minimum PSNR
 and `1.084x` mean speedup.
 Caching codebook bucket boundaries removed repeated constant setup from encode,
 but the synthetic rerun was noisy and did not produce a separate K7 speed win.
+The byte-code runtime V2 slice is recorded in
+`docs/self-attention-runtime-v2-2026-06-01.md`. It validated an opt-in
+`code_format="byte"` path end-to-end, including fused Triton attention and
+Diffusers policy selection. Synthetic 1024-token K7/no-QJL self-attention
+improved total time from `1.1133ms` packed to `1.0223ms` byte-code by cutting
+encode from `0.4330ms` to `0.1552ms`, but fused attention slowed from
+`0.7665ms` to `0.8826ms` because byte-code stores `68` bytes/vector instead of
+`60`. The three-case image suite passed with identical quality to fast
+bit-packed K7/no-QJL (`51.87 dB` minimum PSNR, `53.96 dB` mean PSNR), but mean
+speedup fell to `1.057x` versus `1.084x`. Keep byte-code as an opt-in format
+for shorter-key experiments; keep bit-packed K as the current 1024
+self-attention default.
 
 The next slice should be:
 

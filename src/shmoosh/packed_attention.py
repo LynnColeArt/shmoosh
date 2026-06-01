@@ -196,6 +196,7 @@ def triton_packed_key_attention_output(
         key_tokens,
         HEAD_DIM=head_dim,
         BITS=block.bits,
+        BYTE_CODES=block.code_format == "byte",
         QJL_BITS=effective_qjl_bits,
         CODE_BYTES=block.code_bytes_per_vector,
         SIGN_BYTES=block.qjl_sign_bytes_per_vector if effective_qjl_bits else 1,
@@ -227,6 +228,7 @@ def encode_and_attention_output(
     output_dtype: Any | None = None,
     codec: Any | None = None,
     resources: PackedScoreResources | None = None,
+    code_format: Literal["packed", "byte"] = "packed",
 ) -> Any:
     """Encode K into a packed block, then run packed-K exact-V attention."""
 
@@ -238,6 +240,8 @@ def encode_and_attention_output(
         codebook_samples=codebook_samples,
         lloyd_iters=lloyd_iters,
         codec=codec,
+        resources=resources,
+        code_format=code_format,
     )
     return packed_key_attention_output(
         query,
@@ -374,6 +378,7 @@ if triton is not None and tl is not None:
         key_tokens,
         HEAD_DIM: tl.constexpr,
         BITS: tl.constexpr,
+        BYTE_CODES: tl.constexpr,
         QJL_BITS: tl.constexpr,
         CODE_BYTES: tl.constexpr,
         SIGN_BYTES: tl.constexpr,
@@ -405,28 +410,38 @@ if triton is not None and tl is not None:
         )
         q_rot = tl.dot(query_values, rotation_t, input_precision="ieee")
 
-        bit_position = dim_offsets[:, None] * BITS
-        byte_index = bit_position // 8
-        bit_offset = bit_position % 8
-        code_byte = tl.load(
-            codes_ptr
-            + head_like * key_tokens * CODE_BYTES
-            + k_offsets[None, :] * CODE_BYTES
-            + byte_index,
-            mask=k_mask[None, :],
-            other=0,
-        ).to(tl.uint32)
-        next_byte = tl.load(
-            codes_ptr
-            + head_like * key_tokens * CODE_BYTES
-            + k_offsets[None, :] * CODE_BYTES
-            + byte_index
-            + 1,
-            mask=k_mask[None, :] & ((byte_index + 1) < CODE_BYTES),
-            other=0,
-        ).to(tl.uint32)
-        combined = code_byte | (next_byte << 8)
-        code = (combined >> bit_offset) & ((1 << BITS) - 1)
+        if BYTE_CODES:
+            code = tl.load(
+                codes_ptr
+                + head_like * key_tokens * CODE_BYTES
+                + k_offsets[None, :] * CODE_BYTES
+                + dim_offsets[:, None],
+                mask=k_mask[None, :],
+                other=0,
+            ).to(tl.uint32)
+        else:
+            bit_position = dim_offsets[:, None] * BITS
+            byte_index = bit_position // 8
+            bit_offset = bit_position % 8
+            code_byte = tl.load(
+                codes_ptr
+                + head_like * key_tokens * CODE_BYTES
+                + k_offsets[None, :] * CODE_BYTES
+                + byte_index,
+                mask=k_mask[None, :],
+                other=0,
+            ).to(tl.uint32)
+            next_byte = tl.load(
+                codes_ptr
+                + head_like * key_tokens * CODE_BYTES
+                + k_offsets[None, :] * CODE_BYTES
+                + byte_index
+                + 1,
+                mask=k_mask[None, :] & ((byte_index + 1) < CODE_BYTES),
+                other=0,
+            ).to(tl.uint32)
+            combined = code_byte | (next_byte << 8)
+            code = (combined >> bit_offset) & ((1 << BITS) - 1)
         code_values = tl.load(codebook_ptr + code, mask=k_mask[None, :], other=0.0)
         scores = tl.dot(q_rot, code_values, input_precision="ieee")
 
@@ -501,6 +516,7 @@ if triton is not None and tl is not None:
         key_tokens,
         HEAD_DIM: tl.constexpr,
         BITS: tl.constexpr,
+        BYTE_CODES: tl.constexpr,
         QJL_BITS: tl.constexpr,
         CODE_BYTES: tl.constexpr,
         SIGN_BYTES: tl.constexpr,
@@ -550,28 +566,38 @@ if triton is not None and tl is not None:
         for key_start in tl.range(0, key_tokens, BLOCK_K):
             tile_k_offsets = key_start + k_offsets
             tile_k_mask = tile_k_offsets < key_tokens
-            bit_position = dim_offsets[:, None] * BITS
-            byte_index = bit_position // 8
-            bit_offset = bit_position % 8
-            code_byte = tl.load(
-                codes_ptr
-                + head_like * key_tokens * CODE_BYTES
-                + tile_k_offsets[None, :] * CODE_BYTES
-                + byte_index,
-                mask=tile_k_mask[None, :],
-                other=0,
-            ).to(tl.uint32)
-            next_byte = tl.load(
-                codes_ptr
-                + head_like * key_tokens * CODE_BYTES
-                + tile_k_offsets[None, :] * CODE_BYTES
-                + byte_index
-                + 1,
-                mask=tile_k_mask[None, :] & ((byte_index + 1) < CODE_BYTES),
-                other=0,
-            ).to(tl.uint32)
-            combined = code_byte | (next_byte << 8)
-            code = (combined >> bit_offset) & ((1 << BITS) - 1)
+            if BYTE_CODES:
+                code = tl.load(
+                    codes_ptr
+                    + head_like * key_tokens * CODE_BYTES
+                    + tile_k_offsets[None, :] * CODE_BYTES
+                    + dim_offsets[:, None],
+                    mask=tile_k_mask[None, :],
+                    other=0,
+                ).to(tl.uint32)
+            else:
+                bit_position = dim_offsets[:, None] * BITS
+                byte_index = bit_position // 8
+                bit_offset = bit_position % 8
+                code_byte = tl.load(
+                    codes_ptr
+                    + head_like * key_tokens * CODE_BYTES
+                    + tile_k_offsets[None, :] * CODE_BYTES
+                    + byte_index,
+                    mask=tile_k_mask[None, :],
+                    other=0,
+                ).to(tl.uint32)
+                next_byte = tl.load(
+                    codes_ptr
+                    + head_like * key_tokens * CODE_BYTES
+                    + tile_k_offsets[None, :] * CODE_BYTES
+                    + byte_index
+                    + 1,
+                    mask=tile_k_mask[None, :] & ((byte_index + 1) < CODE_BYTES),
+                    other=0,
+                ).to(tl.uint32)
+                combined = code_byte | (next_byte << 8)
+                code = (combined >> bit_offset) & ((1 << BITS) - 1)
             code_values = tl.load(
                 codebook_ptr + code,
                 mask=tile_k_mask[None, :],

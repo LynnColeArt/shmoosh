@@ -80,6 +80,12 @@ def main() -> None:
         help="Packed score backend when --attention-backend=packed.",
     )
     parser.add_argument(
+        "--code-format",
+        choices=["packed", "byte"],
+        default="packed",
+        help="Runtime K-code layout for packed attention.",
+    )
+    parser.add_argument(
         "--exact-keys",
         action="store_true",
         help="Leave K exact and only quantize values if --quantize-values is set.",
@@ -419,6 +425,7 @@ def _processor_config(
         "codebook_samples": args.codebook_samples,
         "attention_backend": args.attention_backend,
         "packed_backend": args.packed_backend,
+        "code_format": args.code_format,
         "cache_cross_attention": getattr(args, "cache_cross_attention", False),
     }
     if policy is None:
@@ -445,6 +452,7 @@ def _apply_processor_overrides(config: dict[str, Any], overrides: Any) -> None:
         ("codebook_samples", "codebook_samples"),
         ("attention_backend", "attention_backend"),
         ("packed_backend", "packed_backend"),
+        ("code_format", "code_format"),
         ("cache_cross_attention", "cache_cross_attention"),
     ):
         if source_key in overrides:
@@ -546,6 +554,7 @@ def _processor_metadata(config: dict[str, Any]) -> dict[str, Any]:
         "quantize_values": config["quantize_values"],
         "attention_backend": config["attention_backend"],
         "packed_backend": config["packed_backend"],
+        "code_format": config["code_format"],
         "cache_cross_attention": config["cache_cross_attention"],
     }
 

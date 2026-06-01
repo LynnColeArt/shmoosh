@@ -109,6 +109,10 @@ def packed_key_scores(
         raise ValueError("backend must be one of: auto, torch, triton")
     if backend == "torch":
         return torch_packed_key_scores(query, block, resources=resources)
+    if block.code_format == "byte":
+        if backend == "triton":
+            raise ValueError("triton packed-key scores require packed codes")
+        return torch_packed_key_scores(query, block, resources=resources)
     if backend == "triton":
         return triton_packed_key_scores(query, block, resources=resources)
     if _can_use_triton(query):
@@ -133,11 +137,7 @@ def torch_packed_key_scores(
     codebook = resources.codebook.to(device=query.device, dtype=torch.float32)
     q_rot = torch.matmul(query_f, rotation.T)
 
-    indices = _unpack_bits(
-        block.codes.to(device=query.device),
-        bits=block.bits,
-        value_count=block.head_dim,
-    )
+    indices = _code_indices(block, device=query.device)
     code_values = codebook[indices] * (1.0 / sqrt(block.head_dim))
     scores = torch.einsum(
         "bhqd,bhtd,bht->bhqt",
@@ -186,6 +186,8 @@ def triton_packed_key_scores(
     """Minimal Triton score kernel that unpacks packed K codes in-kernel."""
 
     torch = _load_torch()
+    if block.code_format != "packed":
+        raise ValueError("triton packed-key scores require packed codes")
     if triton is None or _packed_key_score_kernel is None:
         raise RuntimeError("triton is required for backend='triton'")
     if not query.is_cuda:
@@ -297,6 +299,17 @@ def _resources_for(
     if resources is not None:
         return resources
     return build_score_resources(block, device=query.device)
+
+
+def _code_indices(block: PackedKeyBlock, *, device: Any) -> Any:
+    torch = _load_torch()
+    if block.code_format == "byte":
+        return block.codes.to(device=device, dtype=torch.int64)
+    return _unpack_bits(
+        block.codes.to(device=device),
+        bits=block.bits,
+        value_count=block.head_dim,
+    )
 
 
 def _can_use_triton(query: Any) -> bool:

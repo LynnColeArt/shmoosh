@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import sqrt
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 
@@ -28,6 +28,7 @@ class PackedKeyBlock:
     seed: int
     codebook_samples: int = 80_000
     lloyd_iters: int = 80
+    code_format: Literal["packed", "byte"] = "packed"
 
     @property
     def shape(self) -> tuple[int, int, int, int]:
@@ -40,6 +41,8 @@ class PackedKeyBlock:
 
     @property
     def code_bytes_per_vector(self) -> int:
+        if self.code_format == "byte":
+            return self.head_dim
         return _ceil_div(self.head_dim * self.bits, 8)
 
     @property
@@ -90,7 +93,14 @@ class PackedKeyBlock:
         return torch.from_numpy(decoded).to(device=target_device, dtype=target_dtype)
 
     def to_encoded_vectors(self) -> EncodedVectors:
-        indices = _unpack_bits(self.codes, bits=self.bits, value_count=self.head_dim)
+        if self.code_format == "byte":
+            indices = self.codes.to(dtype=_load_torch().int64)
+        else:
+            indices = _unpack_bits(
+                self.codes,
+                bits=self.bits,
+                value_count=self.head_dim,
+            )
         residual_signs = None
         if self.residual_signs is not None:
             sign_bits = _unpack_bits(
@@ -134,6 +144,7 @@ def encode_packed_keys(
     timing_recorder: Any | None = None,
     timing_module: str | None = None,
     step_state: Any | None = None,
+    code_format: Literal["packed", "byte"] = "packed",
 ) -> PackedKeyBlock:
     torch = _load_torch()
     if keys.ndim != 4:
@@ -142,6 +153,8 @@ def encode_packed_keys(
         raise ValueError("bits must be in the range 1..8 for packed key blocks")
     if qjl_bits < 0:
         raise ValueError("qjl_bits must be non-negative")
+    if code_format not in {"packed", "byte"}:
+        raise ValueError("code_format must be one of: packed, byte")
 
     device = keys.device
     batch, heads, tokens, head_dim = (int(size) for size in keys.shape)
@@ -176,6 +189,7 @@ def encode_packed_keys(
             timing_recorder=timing_recorder,
             timing_module=timing_module,
             step_state=step_state,
+            code_format=code_format,
         )
 
     encoded = codec.encode(
@@ -184,7 +198,7 @@ def encode_packed_keys(
         .numpy()
     )
     indices = torch.from_numpy(encoded.indices.astype(np.int64))
-    codes = _pack_bits(indices, bits=bits).to(device=device)
+    codes = _encode_codes(indices, bits=bits, code_format=code_format).to(device=device)
     norms = torch.from_numpy(encoded.norms.astype(np.float32)).to(device=device)
 
     residual_signs = None
@@ -211,6 +225,7 @@ def encode_packed_keys(
         seed=seed,
         codebook_samples=codebook_samples,
         lloyd_iters=lloyd_iters,
+        code_format=code_format,
     )
 
 
@@ -226,6 +241,7 @@ def _encode_packed_keys_torch(
     timing_recorder: Any | None = None,
     timing_module: str | None = None,
     step_state: Any | None = None,
+    code_format: Literal["packed", "byte"] = "packed",
 ) -> PackedKeyBlock:
     torch = _load_torch()
     device = keys.device
@@ -243,6 +259,7 @@ def _encode_packed_keys_torch(
     timing_metadata = {
         "bits": bits,
         "qjl_bits": qjl_bits,
+        "code_format": code_format,
         "head_dim": head_dim,
         "key_tokens": int(keys.shape[2]),
         "heads": int(keys.shape[1]),
@@ -281,7 +298,12 @@ def _encode_packed_keys_torch(
         step_state,
         timing_metadata,
     ):
-        codes = _pack_bits(indices, bits=bits, validate=False)
+        codes = _encode_codes(
+            indices,
+            bits=bits,
+            code_format=code_format,
+            validate=False,
+        )
 
     residual_signs = None
     residual_norms = None
@@ -328,7 +350,30 @@ def _encode_packed_keys_torch(
         seed=seed,
         codebook_samples=codebook_samples,
         lloyd_iters=lloyd_iters,
+        code_format=code_format,
     )
+
+
+def _encode_codes(
+    indices: Any,
+    *,
+    bits: int,
+    code_format: str,
+    validate: bool = True,
+) -> Any:
+    torch = _load_torch()
+    if code_format not in {"packed", "byte"}:
+        raise ValueError("code_format must be one of: packed, byte")
+    indices = indices.to(dtype=torch.int64)
+    if (
+        validate
+        and indices.numel()
+        and (indices.min() < 0 or indices.max() >= (1 << bits))
+    ):
+        raise ValueError("value is out of range for requested bit width")
+    if code_format == "byte":
+        return indices.to(dtype=torch.uint8)
+    return _pack_bits(indices, bits=bits, validate=False)
 
 
 def _pack_bits(values: Any, *, bits: int, validate: bool = True) -> Any:

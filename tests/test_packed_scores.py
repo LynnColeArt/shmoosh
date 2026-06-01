@@ -47,6 +47,42 @@ def test_packed_key_scores_auto_uses_torch_on_cpu() -> None:
     assert torch.count_nonzero(scores) == 0
 
 
+def test_torch_packed_key_scores_accept_byte_codes() -> None:
+    generator = torch.Generator().manual_seed(9)
+    query = torch.randn(1, 2, 4, 8, generator=generator)
+    key = torch.randn(1, 2, 5, 8, generator=generator)
+    block = encode_packed_keys(
+        key,
+        bits=4,
+        qjl_bits=0,
+        seed=3,
+        codebook_samples=512,
+        code_format="byte",
+    )
+
+    scores = packed_key_scores(query, block, backend="auto")
+    reference = _reference_scores(query, block)
+
+    assert scores.shape == (1, 2, 4, 5)
+    assert torch.allclose(scores, reference, atol=2e-5, rtol=1e-5)
+
+
+def test_triton_packed_key_scores_rejects_byte_codes() -> None:
+    query = torch.zeros(1, 2, 3, 8)
+    key = torch.zeros(1, 2, 5, 8)
+    block = encode_packed_keys(
+        key,
+        bits=4,
+        qjl_bits=0,
+        seed=3,
+        codebook_samples=512,
+        code_format="byte",
+    )
+
+    with pytest.raises(ValueError, match="packed codes"):
+        triton_packed_key_scores(query, block)
+
+
 def test_build_score_resources_rejects_mismatched_codec() -> None:
     key = torch.zeros(1, 2, 5, 8)
     block = encode_packed_keys(key, bits=4, qjl_bits=0, seed=3, codebook_samples=512)

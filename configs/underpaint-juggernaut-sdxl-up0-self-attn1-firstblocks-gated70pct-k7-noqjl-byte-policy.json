@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "description": "Opt-in byte-code runtime variant of the exact-first 70% K7/no-QJL Shmoosh policy for the first self-attention transformer block in each up_blocks.0 attention group of the local Underpaint Juggernaut SDXL checkpoint.",
+  "source": "docs/self-attention-runtime-v2-2026-06-01.md",
+  "validation": {
+    "status": "exploratory_suite_passed_not_preferred",
+    "candidate_reason": "Byte-code K stores one code byte per head dimension, trading a larger K payload for simpler encode and fused-attention loads in late K7/no-QJL self-attention.",
+    "synthetic_1024": {
+      "byte_output_dir": "captures/self-attention-variant-bench-1024-byte-k7-noqjl-100iters",
+      "packed_compare_output_dir": "captures/self-attention-variant-bench-1024-packed-k7-noqjl-byte-slice-compare-100iters",
+      "bits": 7,
+      "qjl_bits": 0,
+      "relative_rmse": 0.02399831645793404,
+      "byte_total_ms": 1.0223290580324829,
+      "byte_encode_ms": 0.1551801012828946,
+      "byte_attention_ms": 0.8825534489005804,
+      "byte_packed_bytes_per_vector": 68,
+      "packed_total_ms": 1.1133307591080666,
+      "packed_encode_ms": 0.4329733410850167,
+      "packed_attention_ms": 0.7665329589508474,
+      "packed_bytes_per_vector": 60
+    },
+    "image_smoke": {
+      "output_dir": "captures/image-ab-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-byte-1024-trace-reading-nook",
+      "prompt": "reading-nook-seed1-1024",
+      "mse": 0.000006508050773845753,
+      "mae": 0.000858705781865865,
+      "psnr_db": 51.86549067487634,
+      "baseline_seconds": 14.28566506295465,
+      "shmoosh_seconds": 12.460625795880333,
+      "speedup": 1.1464644952003695,
+      "packed_encode_seconds": 0.017040866194292903,
+      "packed_attention_seconds": 0.03741445089690387,
+      "scheduled_quantized_seconds": 0.0941570894792676
+    },
+    "validation_suite_1024": {
+      "output_dir": "captures/image-policy-suite-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-byte-1024",
+      "case_count": 3,
+      "min_psnr_db": 51.86549067487634,
+      "mean_psnr_db": 53.95682092188594,
+      "max_mse": 0.000006508050773845753,
+      "mean_baseline_seconds": 12.399602667040503,
+      "mean_shmoosh_seconds": 11.730848111677915,
+      "mean_speedup": 1.0570082017085236
+    },
+    "note": "The byte-code runtime validates correctly and reduces synthetic encode time, but it is not preferred for 1024 self-attention because the larger code payload slows fused attention and underperforms the fast bit-packed image suite."
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "shmoosh_policy": {
+    "bits": 7,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 0,
+    "codebook_samples": 80000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false,
+    "attention_backend": "packed",
+    "packed_backend": "auto",
+    "code_format": "byte"
+  },
+  "quantized_modules": [
+    {
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7
+    },
+    {
+      "name": "up_blocks.0.attentions.1.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7
+    },
+    {
+      "name": "up_blocks.0.attentions.2.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7
+    }
+  ],
+  "exact_modules": []
+}

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import math
 import time
-from typing import Any
+from typing import Any, Literal
 
 from shmoosh.packed_attention import packed_key_attention_output
 from shmoosh.packed_keys import encode_packed_keys
@@ -223,6 +223,7 @@ class ShmooshAttnProcessor:
     fallback_on_mask: bool = True
     attention_backend: str = "reference"
     packed_backend: str = "auto"
+    code_format: Literal["packed", "byte"] = "packed"
     cache_cross_attention: bool = False
     timing_recorder: ShmooshTimingRecorder | None = field(
         default=None,
@@ -263,6 +264,8 @@ class ShmooshAttnProcessor:
             raise ValueError("attention_backend must be one of: reference, packed")
         if self.packed_backend not in {"auto", "torch", "triton"}:
             raise ValueError("packed_backend must be one of: auto, torch, triton")
+        if self.code_format not in {"packed", "byte"}:
+            raise ValueError("code_format must be one of: packed, byte")
 
     def __call__(
         self,
@@ -371,6 +374,7 @@ class ShmooshAttnProcessor:
                 "backend": self.packed_backend,
                 "bits": key_bits,
                 "qjl_bits": self.qjl_bits,
+                "code_format": self.code_format,
                 "heads": heads,
                 "query_tokens": int(query.shape[2]),
                 "key_tokens": key_tokens,
@@ -389,6 +393,7 @@ class ShmooshAttnProcessor:
                         timing_recorder=self.timing_recorder,
                         timing_module=self.timing_module,
                         step_state=self.step_state,
+                        code_format=self.code_format,
                     )
                 if cache_key is not None:
                     self._cross_attention_cache[cache_key] = _CachedCrossAttention(
@@ -503,6 +508,7 @@ class ShmooshAttnProcessor:
             self.qjl_bits,
             self.seed,
             self.codebook_samples,
+            self.code_format,
         )
 
     def _record_cross_cache(self, hit: bool) -> None:
@@ -553,6 +559,7 @@ class ShmooshAttnProcessor:
             codebook_samples=self.codebook_samples,
             codec=codec,
             resources=resources,
+            code_format=self.code_format,
         )
         packed_key_attention_output(
             query,
