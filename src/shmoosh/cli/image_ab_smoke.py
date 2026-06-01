@@ -13,6 +13,7 @@ from shmoosh.diffusers_processor import (
     DenoisingStepState,
     ScheduledShmooshAttnProcessor,
     ShmooshAttnProcessor,
+    ShmooshTimingRecorder,
     warm_packed_attention_processor,
 )
 
@@ -88,6 +89,11 @@ def main() -> None:
         action="store_true",
         help="Quantize V as well as K. By default, values stay exact.",
     )
+    parser.add_argument(
+        "--trace-processor-timing",
+        action="store_true",
+        help="Record per-processor timing spans in metrics JSON.",
+    )
     args = parser.parse_args()
     if not args.list_modules and not args.prompt:
         raise SystemExit("--prompt is required unless --list-modules is used.")
@@ -138,17 +144,26 @@ def main() -> None:
     )
 
     processor_metadata: dict[str, Any]
+    timing_recorder = _processor_timing_recorder(torch, args)
     step_state = DenoisingStepState(total_steps=args.steps) if policy_selection else None
     if policy_selection:
         _install_policy_processors(
-            policy_selection, args=args, policy=policy, step_state=step_state
+            policy_selection,
+            args=args,
+            policy=policy,
+            step_state=step_state,
+            timing_recorder=timing_recorder,
         )
         processor_metadata = _policy_processor_metadata(
             all_modules, policy_selection, args=args, policy=policy
         )
     else:
         processor_config = _processor_config(args, policy=policy)
-        processor = ShmooshAttnProcessor(**processor_config)
+        processor = ShmooshAttnProcessor(
+            **processor_config,
+            timing_recorder=timing_recorder,
+            timing_module=_single_timing_module(modules),
+        )
         _install_processor(modules, processor)
         processor_metadata = _processor_metadata(processor_config)
 
@@ -194,6 +209,7 @@ def main() -> None:
         "baseline": baseline_stats,
         "shmoosh": shmoosh_stats,
         "image_metrics": image_metrics,
+        "processor_timing": _processor_timing_payload(timing_recorder),
         "outputs": {
             "baseline": str(baseline_path),
             "shmoosh": str(shmoosh_path),
@@ -434,10 +450,16 @@ def _install_policy_processors(
     args: argparse.Namespace,
     policy: dict[str, Any],
     step_state: DenoisingStepState | None = None,
+    timing_recorder: ShmooshTimingRecorder | None = None,
 ) -> None:
     for name, module, entry in selection:
         config = _processor_config(args, policy=policy, module_entry=entry)
-        processor = ShmooshAttnProcessor(**config)
+        processor = ShmooshAttnProcessor(
+            **config,
+            timing_recorder=timing_recorder,
+            timing_module=name,
+            step_state=step_state,
+        )
         window = _module_window_config(entry)
         if _uses_scheduled_window(window):
             if step_state is None:
@@ -450,6 +472,8 @@ def _install_policy_processors(
                 quantize_end_step=window["quantize_end_step"],
                 quantize_start_percent=window["quantize_start_percent"],
                 quantize_end_percent=window["quantize_end_percent"],
+                timing_recorder=timing_recorder,
+                timing_module=name,
             )
         _install_processor([(name, module)], processor)
 
@@ -695,6 +719,29 @@ def _is_cuda_device(torch: Any, device: str) -> bool:
 
 def _mib(value: int) -> float:
     return value / (1024 * 1024)
+
+
+def _processor_timing_recorder(
+    torch: Any,
+    args: argparse.Namespace,
+) -> ShmooshTimingRecorder | None:
+    if not getattr(args, "trace_processor_timing", False):
+        return None
+    return ShmooshTimingRecorder(synchronize_cuda=_is_cuda_device(torch, args.device))
+
+
+def _processor_timing_payload(
+    recorder: ShmooshTimingRecorder | None,
+) -> dict[str, Any]:
+    if recorder is None:
+        return {"enabled": False}
+    return recorder.payload()
+
+
+def _single_timing_module(modules: list[tuple[str, Any]]) -> str | None:
+    if len(modules) == 1:
+        return modules[0][0]
+    return None
 
 
 def _install_processor(modules: list[tuple[str, Any]], processor: Any) -> None:

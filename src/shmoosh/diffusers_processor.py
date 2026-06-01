@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
+import time
 from typing import Any
 
 from shmoosh.packed_attention import packed_key_attention_output
@@ -17,6 +18,93 @@ class DenoisingStepState:
     total_steps: int | None = None
 
 
+@dataclass
+class ShmooshTimingRecorder:
+    synchronize_cuda: bool = False
+    records: list[dict[str, Any]] = field(default_factory=list)
+
+    def span(
+        self,
+        phase: str,
+        *,
+        module: str | None = None,
+        step_state: DenoisingStepState | None = None,
+        tensor: Any | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> "_TimingSpan":
+        return _TimingSpan(
+            self,
+            phase=phase,
+            module=module,
+            step_state=step_state,
+            tensor=tensor,
+            metadata=metadata,
+        )
+
+    def record(
+        self,
+        phase: str,
+        *,
+        seconds: float,
+        module: str | None = None,
+        step_state: DenoisingStepState | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        record: dict[str, Any] = {
+            "phase": phase,
+            "module": module,
+            "seconds": seconds,
+        }
+        if step_state is not None:
+            record["step"] = step_state.current_step
+            record["total_steps"] = step_state.total_steps
+        if metadata:
+            record.update(metadata)
+        self.records.append(record)
+
+    def payload(self) -> dict[str, Any]:
+        return {
+            "enabled": True,
+            "synchronize_cuda": self.synchronize_cuda,
+            "record_count": len(self.records),
+            "summary": {
+                "by_phase": _aggregate_timing(self.records, ("phase",)),
+                "by_module_phase": _aggregate_timing(
+                    self.records,
+                    ("module", "phase"),
+                ),
+                "by_step_phase": _aggregate_timing(self.records, ("step", "phase")),
+            },
+            "records": self.records,
+        }
+
+
+@dataclass
+class _TimingSpan:
+    recorder: ShmooshTimingRecorder
+    phase: str
+    module: str | None
+    step_state: DenoisingStepState | None
+    tensor: Any | None
+    metadata: dict[str, Any] | None
+    _start: float = field(default=0.0, init=False)
+
+    def __enter__(self) -> "_TimingSpan":
+        _synchronize_if_needed(self.recorder, self.tensor)
+        self._start = time.perf_counter()
+        return self
+
+    def __exit__(self, _exc_type, _exc, _traceback) -> None:
+        _synchronize_if_needed(self.recorder, self.tensor)
+        self.recorder.record(
+            self.phase,
+            seconds=time.perf_counter() - self._start,
+            module=self.module,
+            step_state=self.step_state,
+            metadata=self.metadata,
+        )
+
+
 @dataclass(frozen=True)
 class ScheduledShmooshAttnProcessor:
     original_processor: Any
@@ -26,6 +114,8 @@ class ScheduledShmooshAttnProcessor:
     quantize_end_step: int | None = None
     quantize_start_percent: float | None = None
     quantize_end_percent: float | None = None
+    timing_recorder: ShmooshTimingRecorder | None = None
+    timing_module: str | None = None
 
     def __call__(
         self,
@@ -37,20 +127,48 @@ class ScheduledShmooshAttnProcessor:
         *args,
         **kwargs,
     ):
+        dispatch_start = time.perf_counter()
+        quantized = self._quantize_current_step()
         processor = (
             self.shmoosh_processor
-            if self._quantize_current_step()
+            if quantized
             else self.original_processor or _sdpa_processor()
         )
-        return processor(
-            attn,
-            hidden_states,
-            encoder_hidden_states,
-            attention_mask,
-            temb,
-            *args,
-            **kwargs,
+        if self.timing_recorder is None:
+            return processor(
+                attn,
+                hidden_states,
+                encoder_hidden_states,
+                attention_mask,
+                temb,
+                *args,
+                **kwargs,
+            )
+
+        self.timing_recorder.record(
+            "policy_dispatch",
+            seconds=time.perf_counter() - dispatch_start,
+            module=self.timing_module,
+            step_state=self.step_state,
+            metadata={"quantized": quantized},
         )
+        phase = "scheduled_quantized" if quantized else "scheduled_exact"
+        with self.timing_recorder.span(
+            phase,
+            module=self.timing_module,
+            step_state=self.step_state,
+            tensor=hidden_states,
+            metadata={"quantized": quantized},
+        ):
+            return processor(
+                attn,
+                hidden_states,
+                encoder_hidden_states,
+                attention_mask,
+                temb,
+                *args,
+                **kwargs,
+            )
 
     def _quantize_current_step(self) -> bool:
         step = self.step_state.current_step
@@ -97,6 +215,17 @@ class ShmooshAttnProcessor:
     fallback_on_mask: bool = True
     attention_backend: str = "reference"
     packed_backend: str = "auto"
+    timing_recorder: ShmooshTimingRecorder | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+    timing_module: str | None = field(default=None, repr=False, compare=False)
+    step_state: DenoisingStepState | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
     _packed_codec_cache: dict[tuple[int, int, int, int, int, int], ShmooshCodec] = field(
         default_factory=dict,
         init=False,
@@ -131,7 +260,20 @@ class ShmooshAttnProcessor:
         **kwargs,
     ):
         if attention_mask is not None and self.fallback_on_mask:
-            return _sdpa_processor()(attn, hidden_states, encoder_hidden_states, attention_mask, temb, *args, **kwargs)
+            with self._timing_span(
+                "masked_fallback",
+                hidden_states,
+                {"attention_mask": True},
+            ):
+                return _sdpa_processor()(
+                    attn,
+                    hidden_states,
+                    encoder_hidden_states,
+                    attention_mask,
+                    temb,
+                    *args,
+                    **kwargs,
+                )
 
         residual = hidden_states
         if attn.spatial_norm is not None:
@@ -185,36 +327,56 @@ class ShmooshAttnProcessor:
                 bits=key_bits,
                 codec=codec,
             )
-            block = encode_packed_keys(
-                key,
-                bits=key_bits,
-                qjl_bits=self.qjl_bits,
-                seed=self.seed,
-                codebook_samples=self.codebook_samples,
-                codec=codec,
-                resources=resources,
-            )
-            hidden_states = packed_key_attention_output(
-                query,
-                block,
-                value,
-                resources=resources,
-                backend=self.packed_backend,
-            )
+            packed_metadata = {
+                "backend": self.packed_backend,
+                "bits": key_bits,
+                "qjl_bits": self.qjl_bits,
+                "heads": int(key.shape[1]),
+                "query_tokens": int(query.shape[2]),
+                "key_tokens": int(key.shape[2]),
+                "head_dim": head_dim,
+            }
+            with self._timing_span("packed_encode", key, packed_metadata):
+                block = encode_packed_keys(
+                    key,
+                    bits=key_bits,
+                    qjl_bits=self.qjl_bits,
+                    seed=self.seed,
+                    codebook_samples=self.codebook_samples,
+                    codec=codec,
+                    resources=resources,
+                )
+            with self._timing_span("packed_attention", query, packed_metadata):
+                hidden_states = packed_key_attention_output(
+                    query,
+                    block,
+                    value,
+                    resources=resources,
+                    backend=self.packed_backend,
+                )
         else:
-            hidden_states = torch_shmoosh_attention(
-                query,
-                key,
-                value,
-                bits=self.bits,
-                qjl_bits=self.qjl_bits,
-                seed=self.seed,
-                quantize_keys=self.quantize_keys,
-                quantize_values=self.quantize_values,
-                key_bits=self.key_bits,
-                value_bits=self.value_bits,
-                codebook_samples=self.codebook_samples,
-            )
+            reference_metadata = {
+                "bits": self.bits,
+                "qjl_bits": self.qjl_bits,
+                "heads": int(key.shape[1]),
+                "query_tokens": int(query.shape[2]),
+                "key_tokens": int(key.shape[2]),
+                "head_dim": head_dim,
+            }
+            with self._timing_span("reference_attention", query, reference_metadata):
+                hidden_states = torch_shmoosh_attention(
+                    query,
+                    key,
+                    value,
+                    bits=self.bits,
+                    qjl_bits=self.qjl_bits,
+                    seed=self.seed,
+                    quantize_keys=self.quantize_keys,
+                    quantize_values=self.quantize_values,
+                    key_bits=self.key_bits,
+                    value_bits=self.value_bits,
+                    codebook_samples=self.codebook_samples,
+                )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
@@ -237,6 +399,22 @@ class ShmooshAttnProcessor:
             self.attention_backend == "packed"
             and self.quantize_keys
             and not self.quantize_values
+        )
+
+    def _timing_span(
+        self,
+        phase: str,
+        tensor: Any,
+        metadata: dict[str, Any],
+    ) -> Any:
+        if self.timing_recorder is None:
+            return _NoTimingSpan()
+        return self.timing_recorder.span(
+            phase,
+            module=self.timing_module,
+            step_state=self.step_state,
+            tensor=tensor,
+            metadata=metadata,
         )
 
     def warm_packed_attention(
@@ -392,3 +570,55 @@ def _sdpa_processor():
         raise RuntimeError("diffusers is required for ShmooshAttnProcessor fallback") from exc
 
     return AttnProcessor2_0()
+
+
+class _NoTimingSpan:
+    def __enter__(self) -> "_NoTimingSpan":
+        return self
+
+    def __exit__(self, _exc_type, _exc, _traceback) -> None:
+        return None
+
+
+def _synchronize_if_needed(recorder: ShmooshTimingRecorder, tensor: Any | None) -> None:
+    if (
+        not recorder.synchronize_cuda
+        or tensor is None
+        or not getattr(tensor, "is_cuda", False)
+    ):
+        return
+    torch = _load_torch()
+    torch.cuda.synchronize(tensor.device)
+
+
+def _aggregate_timing(
+    records: list[dict[str, Any]], keys: tuple[str, ...]
+) -> list[dict[str, Any]]:
+    groups: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for record in records:
+        group_key = tuple(record.get(key) for key in keys)
+        group = groups.setdefault(
+            group_key,
+            {
+                **{key: value for key, value in zip(keys, group_key)},
+                "count": 0,
+                "seconds": 0.0,
+            },
+        )
+        group["count"] += 1
+        group["seconds"] += float(record["seconds"])
+
+    rows = []
+    for group in groups.values():
+        row = dict(group)
+        row["mean_seconds"] = row["seconds"] / row["count"]
+        rows.append(row)
+    return sorted(rows, key=lambda row: tuple(_timing_sort_value(row.get(key)) for key in keys))
+
+
+def _timing_sort_value(value: Any) -> tuple[int, Any]:
+    if value is None:
+        return (0, "")
+    if isinstance(value, (int, float)):
+        return (1, value)
+    return (2, str(value))

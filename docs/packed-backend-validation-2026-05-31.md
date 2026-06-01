@@ -225,3 +225,37 @@ The performance result is therefore no longer "packed is too slow"; it is
 overhead still loses on shorter cases." The next optimization target should
 split measured time inside the processor so encode, fused attention, fallback
 attention, and policy overhead are visible per module and timestep.
+
+## Processor Timing Slice
+
+The next slice added opt-in processor timing with `--trace-processor-timing` on
+the image A/B and policy-suite CLIs. The trace records scheduler dispatch,
+scheduled exact/quantized branch time, packed K encode time, and packed attention
+time by module and denoising step. CUDA traces synchronize around each measured
+span, so traced image seconds are diagnostic and should not be compared directly
+against untraced throughput runs.
+
+First traced 1024 reading-nook run on the RTX 4070:
+
+```text
+baseline_seconds=13.0729
+shmoosh_seconds=12.2931
+psnr=50.54dB
+record_count=378
+```
+
+Processor timing summary:
+
+| phase | calls | seconds | mean per call |
+| --- | ---: | ---: | ---: |
+| packed_encode | 98 | 1.2081 | 12.327 ms |
+| packed_attention | 98 | 0.2116 | 2.159 ms |
+| scheduled_quantized | 98 | 1.5168 | 15.478 ms |
+| scheduled_exact | 42 | 0.0342 | 0.815 ms |
+| policy_dispatch | 140 | 0.0006 | 0.004 ms |
+
+The remaining packed overhead is now visibly encode-side. Fused packed attention
+is a much smaller component than K encode in this run. The next optimization
+slice should split encode into rotation/bucketize, residual projection, and bit
+packing timings, then decide whether to fuse encode or replace the generic Torch
+bucketize/packing path first.

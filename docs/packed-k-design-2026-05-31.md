@@ -284,14 +284,19 @@ the full three-case suite remains mixed. The next kernel step is adding
 processor-level timing so encode, fused attention, fallback attention, and policy
 overhead are visible by module and timestep.
 
+That timing hook now exists behind `--trace-processor-timing`. On the first
+traced 1024 reading-nook run, packed encode consumed `1.2081s` across `98`
+quantized calls while packed attention consumed `0.2116s`; policy dispatch was
+effectively zero. This moves the next production question from "is fused
+attention fast enough?" to "which part of on-device K encode is still too
+expensive?"
+
 ## Acceptance
 
-The next implementation slice should explain the remaining runtime variance:
+The next implementation slice should explain the remaining encode cost:
 
-1. Record per-module timing for policy gating, K encode, fused packed attention,
-   and fallback attention.
-2. Summarize timings by timestep window so early exactness and late quantized
-   attention can be compared directly.
-3. Use the timing report to choose whether the next kernel work should reduce
-   fixed launch overhead, optimize fallback shapes, or fuse more of the encode
-   path.
+1. Split Torch encode timing into rotation/bucketize, residual projection, and
+   bit packing.
+2. Compare those subphase timings across text-key and self-attention key counts.
+3. Use the timing report to choose whether the next kernel work should replace
+   generic Torch bucketize/packing first or fuse more of the encode path.

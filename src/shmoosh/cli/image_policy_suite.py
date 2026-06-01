@@ -19,6 +19,8 @@ from shmoosh.cli.image_ab_smoke import (
     _pipeline_kwargs,
     _print_modules,
     _policy_processor_metadata,
+    _processor_timing_payload,
+    _processor_timing_recorder,
     _run_image,
     _select_component,
     _select_policy_module_entries,
@@ -76,6 +78,11 @@ def main() -> None:
     )
     parser.add_argument("--exact-keys", action="store_true")
     parser.add_argument("--quantize-values", action="store_true")
+    parser.add_argument(
+        "--trace-processor-timing",
+        action="store_true",
+        help="Record per-processor timing spans in each case metrics JSON.",
+    )
     args = parser.parse_args()
 
     torch = _load_torch_and_diffusers()
@@ -196,8 +203,13 @@ def _run_case(
         common_kwargs=common_kwargs,
         label=f"{case.case_id}:baseline",
     )
+    timing_recorder = _processor_timing_recorder(torch, args)
     _install_policy_processors(
-        policy_selection, args=args, policy=policy, step_state=step_state
+        policy_selection,
+        args=args,
+        policy=policy,
+        step_state=step_state,
+        timing_recorder=timing_recorder,
     )
     _warm_packed_processors(modules, torch=torch, args=args)
     shmoosh_image, shmoosh_stats = _run_image(
@@ -238,6 +250,13 @@ def _run_case(
         "diff_heatmap": str(diff_path),
         "metrics": str(metrics_path),
     }
+    processor_timing = _processor_timing_payload(timing_recorder)
+    if timing_recorder is not None:
+        row["processor_timing_seconds"] = sum(
+            float(record["seconds"]) for record in timing_recorder.records
+        )
+        row["processor_timing_records"] = len(timing_recorder.records)
+        row["processor_timing_summary"] = processor_timing["summary"]
     if "cuda_max_memory_allocated_mib" in shmoosh_stats:
         row["shmoosh_cuda_max_memory_allocated_mib"] = shmoosh_stats[
             "cuda_max_memory_allocated_mib"
@@ -253,6 +272,7 @@ def _run_case(
         "policy": policy,
         "baseline": baseline_stats,
         "shmoosh": shmoosh_stats,
+        "processor_timing": processor_timing,
         "image_metrics": image_metrics,
         "outputs": {
             "baseline": str(baseline_path),
@@ -377,6 +397,8 @@ def _write_summary(
         "max_abs",
         "baseline_seconds",
         "shmoosh_seconds",
+        "processor_timing_seconds",
+        "processor_timing_records",
         "shmoosh_cuda_max_memory_allocated_mib",
         "shmoosh_cuda_max_memory_reserved_mib",
         "baseline_image",

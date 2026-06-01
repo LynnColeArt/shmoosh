@@ -3,7 +3,10 @@ from __future__ import annotations
 import pytest
 
 from shmoosh.diffusers_processor import (
+    DenoisingStepState,
+    ScheduledShmooshAttnProcessor,
     ShmooshAttnProcessor,
+    ShmooshTimingRecorder,
     warm_packed_attention_processor,
 )
 
@@ -15,6 +18,14 @@ class _Identity:
 
     def __call__(self, value):
         return value
+
+
+class _FakeProcessor:
+    def __init__(self, label: str) -> None:
+        self.label = label
+
+    def __call__(self, *_args, **_kwargs) -> str:
+        return self.label
 
 
 class _FakeAttention:
@@ -106,6 +117,68 @@ def test_warm_packed_attention_processor_populates_cache() -> None:
     assert warmed is True
     assert len(processor._packed_codec_cache) == 1
     assert len(processor._packed_resource_cache) == 1
+
+
+def test_packed_processor_records_timing_phases() -> None:
+    generator = torch.Generator().manual_seed(1)
+    hidden_states = torch.randn(1, 5, 16, generator=generator)
+    attn = _FakeAttention(heads=2)
+    recorder = ShmooshTimingRecorder()
+    processor = ShmooshAttnProcessor(
+        bits=4,
+        qjl_bits=16,
+        seed=3,
+        quantize_values=False,
+        codebook_samples=2_000,
+        attention_backend="packed",
+        packed_backend="torch",
+        timing_recorder=recorder,
+        timing_module="fake.attn",
+        step_state=DenoisingStepState(current_step=4, total_steps=20),
+    )
+
+    output = processor(attn, hidden_states)
+
+    assert output.shape == hidden_states.shape
+    phases = [record["phase"] for record in recorder.records]
+    assert phases == ["packed_encode", "packed_attention"]
+    assert {record["module"] for record in recorder.records} == {"fake.attn"}
+    assert {record["step"] for record in recorder.records} == {4}
+    assert all(record["seconds"] >= 0 for record in recorder.records)
+    payload = recorder.payload()
+    assert payload["record_count"] == 2
+    assert {row["phase"] for row in payload["summary"]["by_phase"]} == set(phases)
+
+
+def test_scheduled_processor_records_dispatch_and_branch_timing() -> None:
+    recorder = ShmooshTimingRecorder()
+    step_state = DenoisingStepState(current_step=0, total_steps=20)
+    processor = ScheduledShmooshAttnProcessor(
+        original_processor=_FakeProcessor("exact"),
+        shmoosh_processor=_FakeProcessor("shmoosh"),
+        step_state=step_state,
+        quantize_start_step=4,
+        timing_recorder=recorder,
+        timing_module="fake.attn",
+    )
+
+    assert processor(None, None) == "exact"
+    step_state.current_step = 4
+    assert processor(None, None) == "shmoosh"
+
+    phases = [record["phase"] for record in recorder.records]
+    assert phases == [
+        "policy_dispatch",
+        "scheduled_exact",
+        "policy_dispatch",
+        "scheduled_quantized",
+    ]
+    assert [record["quantized"] for record in recorder.records] == [
+        False,
+        False,
+        True,
+        True,
+    ]
 
 
 def test_processor_validates_attention_backend() -> None:
