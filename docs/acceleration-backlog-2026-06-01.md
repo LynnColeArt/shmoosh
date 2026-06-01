@@ -56,10 +56,16 @@ The self-attention trace shows `packed_attention` at `0.1329s` and
 `packed_encode` at `0.0750s` across 30 quantized calls, so the 1024-token path
 needs streaming attention work as well as encode work.
 
+Cross+self composition is recorded in
+`docs/composition-policy-2026-06-01.md`. The 50% self-attention composition
+passed but degraded quality and speed. The 70% self-attention composition is
+the better exploratory policy, clearing the three-case 1024 suite with
+`49.17 dB` minimum PSNR and a `1.048x` mean runtime signal, but it is still only
+marginally better than the cached cross-attention policy alone.
+
 The next slice should be:
 
 1. Keep the cached cross-attention policy as the baseline policy layer.
-2. Composition-test the accepted self-attention candidate with the cached cross-attention
-   policy before treating it as a real runtime win.
-3. After composition testing, profile the self-attention streaming kernel and
-   compare QJL64/no-QJL variants for this 1024-token path.
+2. Profile the self-attention streaming kernel directly.
+3. Compare QJL64 and no-QJL K6/K7 variants for the self-attention modules.
+4. Re-run the 70% composition after any kernel or policy-cost improvement.

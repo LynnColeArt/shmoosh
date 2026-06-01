@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "description": "Exploratory composition of cached exact-first 30% up_blocks.0 cross-attention and exact-first 50% up_blocks.0 self-attention for the local Underpaint Juggernaut SDXL checkpoint.",
+  "source": "docs/composition-policy-2026-06-01.md",
+  "validation": {
+    "status": "suite_passed_quality_degraded",
+    "cross_attention_source": "configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated30pct-k5-k6-qjl128-policy.json",
+    "self_attention_source": "configs/underpaint-juggernaut-sdxl-up0-self-attn1-firstblocks-gated50pct-k6-qjl128-policy.json",
+    "composition_smoke": {
+      "output_dir": "captures/image-ab-juggernaut-up0-cross-cache-self-attn1-gated-k5-k6-1024-reading-nook",
+      "prompt": "reading-nook-seed1-1024",
+      "mse": 0.000013134243090462405,
+      "mae": 0.0013980716466903687,
+      "psnr_db": 48.81594949989232,
+      "baseline_seconds": 11.685485740890726,
+      "shmoosh_seconds": 9.891068725148216
+    },
+    "validation_suite_1024": {
+      "output_dir": "captures/image-policy-suite-juggernaut-up0-cross-cache-self-attn1-gated-k5-k6-1024",
+      "case_count": 3,
+      "min_psnr_db": 47.48829081147928,
+      "mean_psnr_db": 50.83632763576281,
+      "max_mse": 0.00001783080369932577,
+      "mean_baseline_seconds": 9.842487684994316,
+      "mean_shmoosh_seconds": 9.70090196095407,
+      "mean_speedup": 1.0145951092599559
+    },
+    "note": "The 50% self-attention composition passed the suite but degraded fidelity and barely moved mean runtime. Prefer the 70% self-attention composition for follow-up."
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "shmoosh_policy": {
+    "bits": 5,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 128,
+    "codebook_samples": 20000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false,
+    "attention_backend": "packed",
+    "packed_backend": "auto",
+    "cache_cross_attention": true
+  },
+  "quantized_modules": [
+    {
+      "index": 49,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn2",
+      "quantize_start_percent": 0.3
+    },
+    {
+      "index": 59,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.5.attn2",
+      "quantize_start_percent": 0.3
+    },
+    {
+      "index": 61,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.6.attn2",
+      "quantize_start_percent": 0.3
+    },
+    {
+      "index": 65,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.8.attn2",
+      "quantize_start_percent": 0.3
+    },
+    {
+      "index": 67,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.9.attn2",
+      "quantize_start_percent": 0.3
+    },
+    {
+      "index": 79,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.5.attn2",
+      "bits": 6,
+      "quantize_start_percent": 0.3
+    },
+    {
+      "index": 87,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.9.attn2",
+      "bits": 6,
+      "quantize_start_percent": 0.3
+    },
+    {
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn1",
+      "bits": 6,
+      "codebook_samples": 80000,
+      "quantize_start_percent": 0.5
+    },
+    {
+      "name": "up_blocks.0.attentions.1.transformer_blocks.0.attn1",
+      "bits": 6,
+      "codebook_samples": 80000,
+      "quantize_start_percent": 0.5
+    },
+    {
+      "name": "up_blocks.0.attentions.2.transformer_blocks.0.attn1",
+      "bits": 6,
+      "codebook_samples": 80000,
+      "quantize_start_percent": 0.5
+    }
+  ],
+  "exact_modules": [
+    {
+      "index": 85,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.8.attn2",
+      "reason": "Failed combined K6 cross-attention composition with modules 79 and 87."
+    }
+  ]
+}
