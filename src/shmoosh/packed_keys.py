@@ -131,6 +131,9 @@ def encode_packed_keys(
     lloyd_iters: int = 80,
     codec: ShmooshCodec | None = None,
     resources: Any | None = None,
+    timing_recorder: Any | None = None,
+    timing_module: str | None = None,
+    step_state: Any | None = None,
 ) -> PackedKeyBlock:
     torch = _load_torch()
     if keys.ndim != 4:
@@ -170,6 +173,9 @@ def encode_packed_keys(
             codebook_samples=codebook_samples,
             lloyd_iters=lloyd_iters,
             resources=resources,
+            timing_recorder=timing_recorder,
+            timing_module=timing_module,
+            step_state=step_state,
         )
 
     encoded = codec.encode(
@@ -217,6 +223,9 @@ def _encode_packed_keys_torch(
     codebook_samples: int,
     lloyd_iters: int,
     resources: Any,
+    timing_recorder: Any | None = None,
+    timing_module: str | None = None,
+    step_state: Any | None = None,
 ) -> PackedKeyBlock:
     torch = _load_torch()
     device = keys.device
@@ -228,31 +237,83 @@ def _encode_packed_keys_torch(
     if codebook.numel() != (1 << bits):
         raise ValueError("score resources codebook does not match key bit depth")
 
-    keys_f = keys.detach().to(dtype=torch.float32)
-    norms = torch.linalg.vector_norm(keys_f, dim=-1)
-    safe_norms = torch.where(norms > 0, norms, torch.ones_like(norms))
-    unit = keys_f / safe_norms.unsqueeze(-1)
-    rotated = torch.matmul(unit, rotation.T)
-    normalized = rotated * sqrt(head_dim)
-    boundaries = ((codebook[:-1] + codebook[1:]) * 0.5).contiguous()
-    indices = torch.bucketize(normalized.contiguous(), boundaries).to(dtype=torch.int64)
-    codes = _pack_bits(indices, bits=bits)
+    timing_metadata = {
+        "bits": bits,
+        "qjl_bits": qjl_bits,
+        "head_dim": head_dim,
+        "key_tokens": int(keys.shape[2]),
+        "heads": int(keys.shape[1]),
+    }
+    with _timing_span(
+        timing_recorder,
+        "encode_normalize",
+        keys,
+        timing_module,
+        step_state,
+        timing_metadata,
+    ):
+        keys_f = keys.detach().to(dtype=torch.float32)
+        norms = torch.linalg.vector_norm(keys_f, dim=-1)
+        safe_norms = torch.where(norms > 0, norms, torch.ones_like(norms))
+        unit = keys_f / safe_norms.unsqueeze(-1)
+    with _timing_span(
+        timing_recorder,
+        "encode_rotate_bucketize",
+        keys,
+        timing_module,
+        step_state,
+        timing_metadata,
+    ):
+        rotated = torch.matmul(unit, rotation.T)
+        normalized = rotated * sqrt(head_dim)
+        boundaries = ((codebook[:-1] + codebook[1:]) * 0.5).contiguous()
+        indices = torch.bucketize(
+            normalized.contiguous(),
+            boundaries,
+        ).to(dtype=torch.int64)
+    with _timing_span(
+        timing_recorder,
+        "encode_pack_codes",
+        keys,
+        timing_module,
+        step_state,
+        timing_metadata,
+    ):
+        codes = _pack_bits(indices, bits=bits, validate=False)
 
     residual_signs = None
     residual_norms = None
     if qjl_bits > 0:
-        qjl_matrix = resources.qjl_matrix
-        if qjl_matrix is None:
-            raise ValueError("score resources are missing QJL matrix")
-        qjl_matrix = qjl_matrix.to(device=device, dtype=torch.float32)
-        if qjl_matrix.shape != (qjl_bits, head_dim):
-            raise ValueError("score resources QJL matrix does not match key block")
-        code_values = codebook[indices] * (1.0 / sqrt(head_dim))
-        decoded_unit = torch.matmul(code_values, rotation)
-        residual = keys_f - decoded_unit * norms.unsqueeze(-1)
-        residual_norms = torch.linalg.vector_norm(residual, dim=-1)
-        sign_bits = (torch.matmul(residual, qjl_matrix.T) >= 0).to(dtype=torch.int64)
-        residual_signs = _pack_bits(sign_bits, bits=1)
+        with _timing_span(
+            timing_recorder,
+            "encode_residual_project",
+            keys,
+            timing_module,
+            step_state,
+            timing_metadata,
+        ):
+            qjl_matrix = resources.qjl_matrix
+            if qjl_matrix is None:
+                raise ValueError("score resources are missing QJL matrix")
+            qjl_matrix = qjl_matrix.to(device=device, dtype=torch.float32)
+            if qjl_matrix.shape != (qjl_bits, head_dim):
+                raise ValueError("score resources QJL matrix does not match key block")
+            code_values = codebook[indices] * (1.0 / sqrt(head_dim))
+            decoded_unit = torch.matmul(code_values, rotation)
+            residual = keys_f - decoded_unit * norms.unsqueeze(-1)
+            residual_norms = torch.linalg.vector_norm(residual, dim=-1)
+            sign_bits = (torch.matmul(residual, qjl_matrix.T) >= 0).to(
+                dtype=torch.int64
+            )
+        with _timing_span(
+            timing_recorder,
+            "encode_pack_residual_signs",
+            keys,
+            timing_module,
+            step_state,
+            timing_metadata,
+        ):
+            residual_signs = _pack_bits(sign_bits, bits=1, validate=False)
 
     return PackedKeyBlock(
         codes=codes,
@@ -268,37 +329,52 @@ def _encode_packed_keys_torch(
     )
 
 
-def _pack_bits(values: Any, *, bits: int) -> Any:
+def _pack_bits(values: Any, *, bits: int, validate: bool = True) -> Any:
     torch = _load_torch()
     if bits <= 0 or bits > 8:
         raise ValueError("bits must be in the range 1..8")
     values = values.to(dtype=torch.int64)
-    if values.numel() and (values.min() < 0 or values.max() >= (1 << bits)):
+    if (
+        validate
+        and values.numel()
+        and (values.min() < 0 or values.max() >= (1 << bits))
+    ):
         raise ValueError("value is out of range for requested bit width")
 
     value_count = int(values.shape[-1])
+    byte_count = _ceil_div(value_count * bits, 8)
     packed = torch.zeros(
-        (*values.shape[:-1], _ceil_div(value_count * bits, 8)),
-        dtype=torch.uint8,
+        (*values.shape[:-1], byte_count),
+        dtype=torch.int64,
         device=values.device,
     )
-    for index in range(value_count):
-        value = values[..., index]
-        bit_position = index * bits
-        byte_index = bit_position // 8
-        bit_offset = bit_position % 8
-        consumed = 0
-        remaining = bits
-        while remaining > 0:
-            take = min(8 - bit_offset, remaining)
-            mask = (1 << take) - 1
-            chunk = ((value >> consumed) & mask) << bit_offset
-            packed[..., byte_index] = packed[..., byte_index] | chunk.to(torch.uint8)
-            consumed += take
-            remaining -= take
-            byte_index += 1
-            bit_offset = 0
-    return packed
+    if value_count == 0:
+        return packed.to(dtype=torch.uint8)
+
+    positions = torch.arange(value_count, device=values.device, dtype=torch.int64) * bits
+    byte_indices = positions // 8
+    bit_offsets = positions % 8
+    widths = torch.minimum(
+        8 - bit_offsets,
+        torch.full_like(bit_offsets, bits),
+    )
+    vector_shape = (1,) * (values.ndim - 1) + (value_count,)
+    masks = torch.bitwise_left_shift(torch.ones_like(widths), widths) - 1
+    low_chunks = (values & masks.reshape(vector_shape)) << bit_offsets.reshape(vector_shape)
+    low_indices = byte_indices.reshape(vector_shape).expand_as(values)
+    packed.scatter_add_(-1, low_indices, low_chunks)
+
+    high_widths = bits - widths
+    crosses = high_widths > 0
+    high_values = values[..., crosses] >> widths[crosses].reshape(
+        (1,) * (values.ndim - 1) + (-1,)
+    )
+    high_indices = (byte_indices[crosses] + 1).reshape(
+        (1,) * (values.ndim - 1) + (-1,)
+    )
+    packed.scatter_add_(-1, high_indices.expand_as(high_values), high_values)
+
+    return packed.to(dtype=torch.uint8)
 
 
 def _unpack_bits(packed: Any, *, bits: int, value_count: int) -> Any:
@@ -327,6 +403,33 @@ def _unpack_bits(packed: Any, *, bits: int, value_count: int) -> Any:
             byte_index += 1
             bit_offset = 0
     return values
+
+
+def _timing_span(
+    timing_recorder: Any | None,
+    phase: str,
+    tensor: Any,
+    module: str | None,
+    step_state: Any | None,
+    metadata: dict[str, Any],
+) -> Any:
+    if timing_recorder is None:
+        return _NoTimingSpan()
+    return timing_recorder.span(
+        phase,
+        module=module,
+        step_state=step_state,
+        tensor=tensor,
+        metadata=metadata,
+    )
+
+
+class _NoTimingSpan:
+    def __enter__(self) -> "_NoTimingSpan":
+        return self
+
+    def __exit__(self, _exc_type, _exc, _traceback) -> None:
+        return None
 
 
 def _ceil_div(numerator: int, denominator: int) -> int:

@@ -259,3 +259,45 @@ is a much smaller component than K encode in this run. The next optimization
 slice should split encode into rotation/bucketize, residual projection, and bit
 packing timings, then decide whether to fuse encode or replace the generic Torch
 bucketize/packing path first.
+
+## Vector Packing Slice
+
+The encode subtrace made the bottleneck sharper. Rotation, bucketize, and QJL
+projection were already small; generic Python bit packing dominated the encoded
+path:
+
+| encode phase before vector packing | calls | seconds | mean per call |
+| --- | ---: | ---: | ---: |
+| encode_pack_residual_signs | 98 | 0.5608 | 5.723 ms |
+| encode_pack_codes | 98 | 0.4243 | 4.329 ms |
+| encode_residual_project | 98 | 0.0169 | 0.172 ms |
+| encode_normalize | 98 | 0.0143 | 0.146 ms |
+| encode_rotate_bucketize | 98 | 0.0128 | 0.130 ms |
+
+Replacing `_pack_bits` with a vectorized Torch scatter path and skipping
+redundant validation for internally generated indices reduced the same CUDA
+encode microcheck from `14.4400ms` to `0.9497ms` per iteration.
+
+The traced 1024 reading-nook run after vector packing:
+
+| phase | calls | seconds | mean per call |
+| --- | ---: | ---: | ---: |
+| packed_attention | 98 | 0.1996 | 2.036 ms |
+| packed_encode | 98 | 0.1602 | 1.634 ms |
+| encode_pack_codes | 98 | 0.0511 | 0.521 ms |
+| encode_pack_residual_signs | 98 | 0.0479 | 0.488 ms |
+| scheduled_quantized | 98 | 0.4496 | 4.587 ms |
+
+The untraced three-case 1024 suite now shows the first suite-level speed win:
+
+| case | baseline seconds | shmoosh seconds | speed ratio | PSNR |
+| --- | ---: | ---: | ---: | ---: |
+| reading-nook-seed1-1024 | 12.6216 | 10.4788 | 1.204x | 50.54 dB |
+| maple-leaf-seed2-1024 | 8.7265 | 9.1346 | 0.955x | 49.40 dB |
+| misty-lake-seed3-1024 | 9.3430 | 9.9964 | 0.935x | 57.84 dB |
+
+Mean time was `10.2304s` baseline versus `9.8699s` Shmoosh, a `1.037x` suite
+speedup with `mean_psnr=52.59 dB` and `min_psnr=49.40 dB`. The result is
+positive but still shape-dependent: the longer reading-nook case benefits
+strongly, while the shorter maple and misty cases still lose to fixed packed
+path overhead.

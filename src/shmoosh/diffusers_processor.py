@@ -345,6 +345,9 @@ class ShmooshAttnProcessor:
                     codebook_samples=self.codebook_samples,
                     codec=codec,
                     resources=resources,
+                    timing_recorder=self.timing_recorder,
+                    timing_module=self.timing_module,
+                    step_state=self.step_state,
                 )
             with self._timing_span("packed_attention", query, packed_metadata):
                 hidden_states = packed_key_attention_output(

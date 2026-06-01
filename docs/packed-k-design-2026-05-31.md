@@ -291,12 +291,21 @@ effectively zero. This moves the next production question from "is fused
 attention fast enough?" to "which part of on-device K encode is still too
 expensive?"
 
+The answer was bit packing. Encode subtracing showed Python `_pack_bits` consumed
+almost all encode time, while rotation, bucketize, and QJL projection were small.
+The vectorized Torch packing slice reduced the CUDA encode microcheck from
+`14.4400ms` to `0.9497ms`, reduced traced packed encode from `1.0351s` to
+`0.1602s` across the 1024 reading-nook run, and produced the first untraced
+three-case 1024 suite win: `10.2304s` mean baseline versus `9.8699s` mean
+Shmoosh.
+
 ## Acceptance
 
-The next implementation slice should explain the remaining encode cost:
+The next implementation slice should explain the remaining short-case overhead:
 
-1. Split Torch encode timing into rotation/bucketize, residual projection, and
-   bit packing.
-2. Compare those subphase timings across text-key and self-attention key counts.
-3. Use the timing report to choose whether the next kernel work should replace
-   generic Torch bucketize/packing first or fuse more of the encode path.
+1. Trace one short losing case, such as maple-leaf, with the vectorized packer.
+2. Compare scheduled quantized overhead against packed attention and packed
+   encode by module and step.
+3. Use the timing report to choose whether the next kernel work should reduce
+   launch count, fuse encode with attention for text-key modules, or tune the
+   remaining fallback shapes.

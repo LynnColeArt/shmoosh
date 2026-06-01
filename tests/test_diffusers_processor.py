@@ -141,12 +141,15 @@ def test_packed_processor_records_timing_phases() -> None:
 
     assert output.shape == hidden_states.shape
     phases = [record["phase"] for record in recorder.records]
-    assert phases == ["packed_encode", "packed_attention"]
+    assert "packed_encode" in phases
+    assert "packed_attention" in phases
+    assert "encode_rotate_bucketize" in phases
+    assert "encode_residual_project" in phases
     assert {record["module"] for record in recorder.records} == {"fake.attn"}
     assert {record["step"] for record in recorder.records} == {4}
     assert all(record["seconds"] >= 0 for record in recorder.records)
     payload = recorder.payload()
-    assert payload["record_count"] == 2
+    assert payload["record_count"] == len(recorder.records)
     assert {row["phase"] for row in payload["summary"]["by_phase"]} == set(phases)
 
 
