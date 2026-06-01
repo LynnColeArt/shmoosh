@@ -168,6 +168,13 @@ configs/underpaint-juggernaut-sdxl-up0-cross-cache-self-attn1-gated70pct-k5-k7-n
 configs/underpaint-juggernaut-sdxl-up0-cross-cache-self-attn1-gated70pct-k5-k7-noqjl-a1-a2-policy.json
 ```
 
+A non-overlapping handoff policy was also tested, with cross-attention active
+only from 30%-70% and self-attention active from 70%-100%:
+
+```text
+configs/underpaint-juggernaut-sdxl-up0-cross-mid-self-late-k5-k7-noqjl-policy.json
+```
+
 Three-case 1024 comparison:
 
 | Policy | Mean speedup | Min PSNR | Mean PSNR | Max MSE |
@@ -176,6 +183,7 @@ Three-case 1024 comparison:
 | cross + K7/no-QJL self `a1` | 1.053x | 49.02 dB | 52.26 dB | 0.00001253 |
 | cross + K7/no-QJL self `a1+a2` | 1.066x | 48.49 dB | 51.95 dB | 0.00001416 |
 | cross + K7/no-QJL self `a0+a1+a2` | 1.058x | 48.50 dB | 51.44 dB | 0.00001413 |
+| cross 30%-70% + self 70%-100% | 1.088x | 48.67 dB | 51.58 dB | 0.00001359 |
 
 Restricted composition readout: dropping the heaviest `a0` self-attention module
 does help quality versus the full K7/no-QJL composition, and the two-module
@@ -183,6 +191,11 @@ variant is the fastest K7/no-QJL cross+self result so far. But neither
 restricted self-attention policy beats cached cross-attention alone on fidelity.
 For now, K7/no-QJL self-attention remains a strong standalone denoising-layer
 policy, not the default add-on to the cross-cache policy.
+
+The handoff policy is faster than the overlap variants, but still does not
+recover quality. That suggests the composition penalty is not only same-step
+interference; middle-step cross changes can still alter the later trajectory
+that self-attention then refines.
 
 ## Interpretation
 
@@ -203,5 +216,5 @@ Next slice:
    policy modes until a better composition rule is found.
 2. Consider a dedicated no-QJL streaming kernel tile default if repeated image
    traces keep favoring `block_k=32`.
-3. Revisit composition through timestep separation, such as ending cross-cache
-   before self-attention wakes up.
+3. Revisit composition only with a new control surface, such as per-prompt
+   policy choice or a stricter image-quality gate.

@@ -82,6 +82,10 @@ the full three-self-module composition, but cached cross-attention alone still
 had the better fidelity/runtime balance: `49.40 dB` min PSNR and `1.046x` mean
 speedup for cross-cache only versus `49.02 dB` and `1.053x` for one-module
 self composition.
+The non-overlapping handoff policy, with cross-attention active from 30%-70%
+and self-attention active from 70%-100%, was faster at `1.088x` mean speedup
+but still lower quality at `48.67 dB` minimum PSNR. Composition drift is
+therefore not only same-step overlap.
 
 The next slice should be:
 
@@ -90,5 +94,5 @@ The next slice should be:
    not a default add-on to cached cross-attention.
 3. Consider a dedicated no-QJL streaming kernel tile default if repeated image
    traces keep favoring `block_k=32`.
-4. Revisit cross+self composition with non-overlapping timestep windows, such
-   as ending cross-cache before late self-attention starts.
+4. Revisit cross+self composition only after adding a new control surface, such
+   as per-prompt policy choice or a stricter image-quality gate.

@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "description": "Non-overlapping composition of cached middle-window up_blocks.0 cross-attention and late K7/no-QJL up_blocks.0 self-attention for the local Underpaint Juggernaut SDXL checkpoint.",
+  "source": "docs/self-attention-variant-bench-2026-06-01.md",
+  "validation": {
+    "status": "suite_passed_speed_quality_tradeoff",
+    "cross_attention_source": "configs/underpaint-juggernaut-sdxl-up0-cross-mixed-gated30pct-k5-k6-qjl128-policy.json",
+    "self_attention_source": "configs/underpaint-juggernaut-sdxl-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-policy.json",
+    "candidate_reason": "Overlapping cross-cache and late self-attention improved speed but hurt fidelity. This policy tests whether ending cross-attention quantization at 70% before self-attention starts preserves more of the denoising trajectory.",
+    "validation_suite_1024": {
+      "output_dir": "captures/image-policy-suite-juggernaut-up0-cross-mid-self-late-k5-k7-noqjl-1024",
+      "case_count": 3,
+      "min_psnr_db": 48.66779090661855,
+      "mean_psnr_db": 51.5825515526381,
+      "max_mse": 0.000013590045455202926,
+      "mean_baseline_seconds": 9.853313776974877,
+      "mean_shmoosh_seconds": 9.055399410659447,
+      "mean_speedup": 1.0881147622683738
+    },
+    "note": "Non-overlapping cross-middle/self-late composition is the fastest composition in this family so far, but it does not recover fidelity versus cached cross-attention alone or the one-module restricted composition."
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "shmoosh_policy": {
+    "bits": 5,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 128,
+    "codebook_samples": 20000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false,
+    "attention_backend": "packed",
+    "packed_backend": "auto",
+    "cache_cross_attention": true
+  },
+  "quantized_modules": [
+    {
+      "index": 49,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn2",
+      "quantize_start_percent": 0.3,
+      "quantize_end_percent": 0.7
+    },
+    {
+      "index": 59,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.5.attn2",
+      "quantize_start_percent": 0.3,
+      "quantize_end_percent": 0.7
+    },
+    {
+      "index": 61,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.6.attn2",
+      "quantize_start_percent": 0.3,
+      "quantize_end_percent": 0.7
+    },
+    {
+      "index": 65,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.8.attn2",
+      "quantize_start_percent": 0.3,
+      "quantize_end_percent": 0.7
+    },
+    {
+      "index": 67,
+      "name": "up_blocks.0.attentions.0.transformer_blocks.9.attn2",
+      "quantize_start_percent": 0.3,
+      "quantize_end_percent": 0.7
+    },
+    {
+      "index": 79,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.5.attn2",
+      "bits": 6,
+      "quantize_start_percent": 0.3,
+      "quantize_end_percent": 0.7
+    },
+    {
+      "index": 87,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.9.attn2",
+      "bits": 6,
+      "quantize_start_percent": 0.3,
+      "quantize_end_percent": 0.7
+    },
+    {
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn1",
+      "bits": 7,
+      "qjl_bits": 0,
+      "codebook_samples": 80000,
+      "quantize_start_percent": 0.7
+    },
+    {
+      "name": "up_blocks.0.attentions.1.transformer_blocks.0.attn1",
+      "bits": 7,
+      "qjl_bits": 0,
+      "codebook_samples": 80000,
+      "quantize_start_percent": 0.7
+    },
+    {
+      "name": "up_blocks.0.attentions.2.transformer_blocks.0.attn1",
+      "bits": 7,
+      "qjl_bits": 0,
+      "codebook_samples": 80000,
+      "quantize_start_percent": 0.7
+    }
+  ],
+  "exact_modules": [
+    {
+      "index": 85,
+      "name": "up_blocks.0.attentions.1.transformer_blocks.8.attn2",
+      "reason": "Failed combined K6 cross-attention composition with modules 79 and 87."
+    }
+  ]
+}
