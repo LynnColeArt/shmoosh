@@ -179,6 +179,12 @@ class ShmooshAttnProcessor:
         if self._use_packed_attention():
             key_bits = self.key_bits or self.bits
             codec = self._packed_codec(head_dim=head_dim, bits=key_bits)
+            resources = self._packed_score_resources(
+                query_device=query.device,
+                head_dim=head_dim,
+                bits=key_bits,
+                codec=codec,
+            )
             block = encode_packed_keys(
                 key,
                 bits=key_bits,
@@ -186,12 +192,7 @@ class ShmooshAttnProcessor:
                 seed=self.seed,
                 codebook_samples=self.codebook_samples,
                 codec=codec,
-            )
-            resources = self._packed_score_resources(
-                query_device=query.device,
-                head_dim=head_dim,
-                bits=key_bits,
-                codec=codec,
+                resources=resources,
             )
             hidden_states = packed_key_attention_output(
                 query,
@@ -273,6 +274,7 @@ class ShmooshAttnProcessor:
             seed=self.seed,
             codebook_samples=self.codebook_samples,
             codec=codec,
+            resources=resources,
         )
         packed_key_attention_output(
             query,

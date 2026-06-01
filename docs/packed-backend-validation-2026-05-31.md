@@ -179,3 +179,49 @@ self257_materialized_ms_per_iter=0.3990
 self1024_4h_public_auto_ms_per_iter=0.5691
 self1024_4h_materialized_ms_per_iter=1.0371
 ```
+
+## Torch Encode Slice
+
+The first 1024 image run with fused output exposed a new bottleneck: packed
+attention was no longer dominated by score materialization, but `encode_packed_keys`
+still copied K to CPU and used the NumPy reference codec before returning packed
+Torch tensors. The next slice added an optional Torch/CUDA encode path that
+reuses cached packed-score resources when the Diffusers processor is already on
+the packed backend.
+
+A CUDA encode microcheck on the RTX 4070 used `2x20x77x64` fp16 keys with `K5`
+and `QJL-128`:
+
+```text
+numpy_cpu_encode_ms_per_iter=108.0557
+torch_resource_encode_ms_per_iter=14.4400
+codes_equal=True
+norms_max_delta=0.00000095
+residual_norms_max_delta=0.00000072
+```
+
+That removes the largest remaining host-side encode cost for text-key attention.
+On one 1024 image A/B run, the accepted 30% gated policy became faster than the
+exact baseline while keeping image drift small:
+
+```text
+baseline_seconds=12.4544
+shmoosh_seconds=11.4222
+psnr=50.54dB
+mse=0.00000883
+```
+
+The three-case 1024 policy suite is still mixed on end-to-end time:
+
+| case | baseline seconds | shmoosh seconds | speed ratio | PSNR |
+| --- | ---: | ---: | ---: | ---: |
+| reading-nook-seed1-1024 | 12.5654 | 11.4895 | 1.094x | 50.54 dB |
+| maple-leaf-seed2-1024 | 9.1381 | 10.4339 | 0.876x | 49.40 dB |
+| misty-lake-seed3-1024 | 9.1993 | 10.4704 | 0.879x | 57.84 dB |
+
+Mean time was `10.3009s` baseline versus `10.7980s` Shmoosh across the suite.
+The performance result is therefore no longer "packed is too slow"; it is
+"packed can win on a longer attention-heavy case, but the fixed packed-path
+overhead still loses on shorter cases." The next optimization target should
+split measured time inside the processor so encode, fused attention, fallback
+attention, and policy overhead are visible per module and timestep.

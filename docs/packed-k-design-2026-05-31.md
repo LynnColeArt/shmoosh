@@ -243,6 +243,12 @@ processors before timed generation. This removes repeated codebook/rotation/QJL
 resource construction from the hot image path and moves Triton compilation out
 of the measured Shmoosh run.
 
+When cached score resources are available, packed key encoding now stays in
+Torch on the active device instead of round-tripping K through the NumPy codec on
+CPU. The Torch encode path matches the reference packed codes and QJL metadata,
+and on the RTX 4070 reduced a `2x20x77x64` `K5`/`QJL-128` encode microcheck from
+`108.0557ms` to `14.4400ms` per iteration.
+
 The packed backend now routes CUDA `auto`/`triton` attention through fused
 Triton output kernels for fused-compatible dimensions. The fast path uses one
 `128`-token key tile for text-key attention. Larger key sets use a streaming
@@ -262,7 +268,8 @@ The current production path is a staged Torch/Triton design:
    the packed-K Triton kernel.
 3. Avoid reconstructing full K vectors or allocating full score, `q_rot`, or
    `q_proj` tensors on the fused path.
-4. For larger key sets, stream over packed key tiles with a stable softmax
+4. Encode K on-device when cached score resources are available.
+5. For larger key sets, stream over packed key tiles with a stable softmax
    accumulator instead of materializing scores.
 
 The score computation can avoid reconstructing full K vectors by rotating query
@@ -271,18 +278,20 @@ residual correction. A temporary reconstruct-then-attend kernel is useful for
 debugging, but it should not be treated as the production target because it
 reintroduces the fp16 K bandwidth.
 
-The next kernel step is moving from kernel microchecks to 1024 image benchmarks
-with fused CUDA `auto` enabled, so the policy harness can tell us whether the
-kernel gains survive full Diffusers overhead.
+The 1024 image benchmarks with fused CUDA `auto` and Torch encode show the
+packed path can beat the exact baseline on a longer attention-heavy case, but
+the full three-case suite remains mixed. The next kernel step is adding
+processor-level timing so encode, fused attention, fallback attention, and policy
+overhead are visible by module and timestep.
 
 ## Acceptance
 
-The next implementation slice should not promise speed yet. It should prove the
-data path:
+The next implementation slice should explain the remaining runtime variance:
 
-1. A Torch-side packed key object can represent K5/K6 + QJL-128 keys for the
-   accepted policy.
-2. Its byte accounting matches `shmoosh-packed-policy-estimate`.
-3. A debug decode path reconstructs keys closely enough to match the current
-   NumPy reference output.
-4. The fused-score path can then be introduced behind the same container.
+1. Record per-module timing for policy gating, K encode, fused packed attention,
+   and fallback attention.
+2. Summarize timings by timestep window so early exactness and late quantized
+   attention can be compared directly.
+3. Use the timing report to choose whether the next kernel work should reduce
+   fixed launch overhead, optimize fallback shapes, or fuse more of the encode
+   path.

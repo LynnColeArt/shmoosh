@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import sqrt
 from typing import Any
 
 import numpy as np
@@ -129,6 +130,7 @@ def encode_packed_keys(
     codebook_samples: int = 80_000,
     lloyd_iters: int = 80,
     codec: ShmooshCodec | None = None,
+    resources: Any | None = None,
 ) -> PackedKeyBlock:
     torch = _load_torch()
     if keys.ndim != 4:
@@ -158,6 +160,18 @@ def encode_packed_keys(
         or codec.lloyd_iters != lloyd_iters
     ):
         raise ValueError("codec parameters do not match requested packed key block")
+
+    if resources is not None:
+        return _encode_packed_keys_torch(
+            keys,
+            bits=bits,
+            qjl_bits=qjl_bits,
+            seed=seed,
+            codebook_samples=codebook_samples,
+            lloyd_iters=lloyd_iters,
+            resources=resources,
+        )
+
     encoded = codec.encode(
         keys.detach()
         .to(device="cpu", dtype=torch.float32)
@@ -179,6 +193,66 @@ def encode_packed_keys(
         residual_norms = torch.from_numpy(
             encoded.residual_norms.reshape(batch, heads, tokens).astype(np.float32)
         ).to(device=device)
+
+    return PackedKeyBlock(
+        codes=codes,
+        norms=norms,
+        residual_signs=residual_signs,
+        residual_norms=residual_norms,
+        bits=bits,
+        qjl_bits=qjl_bits,
+        head_dim=head_dim,
+        seed=seed,
+        codebook_samples=codebook_samples,
+        lloyd_iters=lloyd_iters,
+    )
+
+
+def _encode_packed_keys_torch(
+    keys: Any,
+    *,
+    bits: int,
+    qjl_bits: int,
+    seed: int,
+    codebook_samples: int,
+    lloyd_iters: int,
+    resources: Any,
+) -> PackedKeyBlock:
+    torch = _load_torch()
+    device = keys.device
+    _batch, _heads, _tokens, head_dim = (int(size) for size in keys.shape)
+    rotation = resources.rotation.to(device=device, dtype=torch.float32)
+    codebook = resources.codebook.to(device=device, dtype=torch.float32)
+    if rotation.shape != (head_dim, head_dim):
+        raise ValueError("score resources rotation does not match key head dimension")
+    if codebook.numel() != (1 << bits):
+        raise ValueError("score resources codebook does not match key bit depth")
+
+    keys_f = keys.detach().to(dtype=torch.float32)
+    norms = torch.linalg.vector_norm(keys_f, dim=-1)
+    safe_norms = torch.where(norms > 0, norms, torch.ones_like(norms))
+    unit = keys_f / safe_norms.unsqueeze(-1)
+    rotated = torch.matmul(unit, rotation.T)
+    normalized = rotated * sqrt(head_dim)
+    boundaries = ((codebook[:-1] + codebook[1:]) * 0.5).contiguous()
+    indices = torch.bucketize(normalized.contiguous(), boundaries).to(dtype=torch.int64)
+    codes = _pack_bits(indices, bits=bits)
+
+    residual_signs = None
+    residual_norms = None
+    if qjl_bits > 0:
+        qjl_matrix = resources.qjl_matrix
+        if qjl_matrix is None:
+            raise ValueError("score resources are missing QJL matrix")
+        qjl_matrix = qjl_matrix.to(device=device, dtype=torch.float32)
+        if qjl_matrix.shape != (qjl_bits, head_dim):
+            raise ValueError("score resources QJL matrix does not match key block")
+        code_values = codebook[indices] * (1.0 / sqrt(head_dim))
+        decoded_unit = torch.matmul(code_values, rotation)
+        residual = keys_f - decoded_unit * norms.unsqueeze(-1)
+        residual_norms = torch.linalg.vector_norm(residual, dim=-1)
+        sign_bits = (torch.matmul(residual, qjl_matrix.T) >= 0).to(dtype=torch.int64)
+        residual_signs = _pack_bits(sign_bits, bits=1)
 
     return PackedKeyBlock(
         codes=codes,

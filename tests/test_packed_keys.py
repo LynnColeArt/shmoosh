@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from shmoosh.packed_keys import _pack_bits, _unpack_bits, encode_packed_keys
+from shmoosh.packed_scores import score_resources_from_codec
 from shmoosh.quantization import ShmooshCodec
 
 torch = pytest.importorskip("torch")
@@ -62,6 +63,36 @@ def test_encode_packed_keys_rejects_mismatched_codec() -> None:
             codebook_samples=512,
             codec=codec,
         )
+
+
+def test_encode_packed_keys_with_torch_resources_matches_reference() -> None:
+    generator = torch.Generator().manual_seed(8)
+    keys = torch.randn(1, 2, 5, 16, generator=generator)
+    codec = ShmooshCodec(dim=16, bits=4, qjl_bits=16, seed=3, codebook_samples=2_000)
+    resources = score_resources_from_codec(codec, device=keys.device)
+
+    reference = encode_packed_keys(
+        keys,
+        bits=4,
+        qjl_bits=16,
+        seed=3,
+        codebook_samples=2_000,
+        codec=codec,
+    )
+    torch_block = encode_packed_keys(
+        keys,
+        bits=4,
+        qjl_bits=16,
+        seed=3,
+        codebook_samples=2_000,
+        codec=codec,
+        resources=resources,
+    )
+
+    assert torch.equal(torch_block.codes, reference.codes)
+    assert torch.allclose(torch_block.norms, reference.norms)
+    assert torch.equal(torch_block.residual_signs, reference.residual_signs)
+    assert torch.allclose(torch_block.residual_norms, reference.residual_norms)
 
 
 def test_packed_key_bytes_match_sdxl_assumption() -> None:
