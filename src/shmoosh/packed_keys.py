@@ -271,6 +271,7 @@ def _encode_packed_keys_torch(
         "key_tokens": int(keys.shape[2]),
         "heads": int(keys.shape[1]),
         "fused_bucketize_pack": False,
+        "fused_rotate_bucketize_pack": False,
     }
     with _timing_span(
         timing_recorder,
@@ -295,29 +296,46 @@ def _encode_packed_keys_torch(
         step_state,
         timing_metadata,
     ):
-        rotated = torch.matmul(keys_f, rotation.T)
-        normalized = rotated * sqrt(head_dim)
-        normalized = normalized.contiguous()
         indices = None
         codes = None
-        if _can_use_triton_bucketize_pack(
-            normalized,
+        if _can_use_triton_rotate_bucketize_pack(
+            keys_f,
+            rotation,
             boundaries,
             bits=bits,
             qjl_bits=qjl_bits,
             code_format=code_format,
         ):
+            timing_metadata["fused_rotate_bucketize_pack"] = True
             timing_metadata["fused_bucketize_pack"] = True
-            codes = _triton_bucketize_pack_codes(
-                normalized,
+            codes = _triton_rotate_bucketize_pack_codes(
+                keys_f.contiguous(),
+                rotation,
                 boundaries,
                 bits=bits,
             )
         else:
-            indices = torch.bucketize(
+            rotated = torch.matmul(keys_f, rotation.T)
+            normalized = rotated * sqrt(head_dim)
+            normalized = normalized.contiguous()
+            if _can_use_triton_bucketize_pack(
                 normalized,
                 boundaries,
-            ).to(dtype=torch.int64)
+                bits=bits,
+                qjl_bits=qjl_bits,
+                code_format=code_format,
+            ):
+                timing_metadata["fused_bucketize_pack"] = True
+                codes = _triton_bucketize_pack_codes(
+                    normalized,
+                    boundaries,
+                    bits=bits,
+                )
+            else:
+                indices = torch.bucketize(
+                    normalized,
+                    boundaries,
+                ).to(dtype=torch.int64)
     with _timing_span(
         timing_recorder,
         "encode_pack_codes",
@@ -553,6 +571,71 @@ def _can_use_triton_bucketize_pack(
     )
 
 
+def _can_use_triton_rotate_bucketize_pack(
+    unit_keys: Any,
+    rotation: Any,
+    boundaries: Any,
+    *,
+    bits: int,
+    qjl_bits: int,
+    code_format: str,
+) -> bool:
+    head_dim = int(unit_keys.shape[-1])
+    return (
+        triton is not None
+        and _rotate_bucketize_pack_codes_kernel is not None
+        and getattr(unit_keys, "is_cuda", False)
+        and getattr(rotation, "is_cuda", False)
+        and getattr(boundaries, "is_cuda", False)
+        and qjl_bits == 0
+        and code_format == "packed"
+        and bits == 7
+        and head_dim == 64
+    )
+
+
+def _triton_rotate_bucketize_pack_codes(
+    unit_keys: Any,
+    rotation: Any,
+    boundaries: Any,
+    *,
+    bits: int,
+) -> Any:
+    torch = _load_torch()
+    if triton is None or _rotate_bucketize_pack_codes_kernel is None:
+        raise RuntimeError("triton is required for fused rotate/bucketize/pack")
+    if bits != 7:
+        raise ValueError("fused rotate/bucketize/pack currently supports K7")
+    head_dim = int(unit_keys.shape[-1])
+    if head_dim != 64:
+        raise ValueError("fused rotate/bucketize/pack currently requires head_dim=64")
+
+    vector_count = int(unit_keys.numel() // head_dim)
+    code_bytes = _ceil_div(head_dim * bits, 8)
+    output = torch.empty(
+        (*unit_keys.shape[:-1], code_bytes),
+        dtype=torch.uint8,
+        device=unit_keys.device,
+    )
+    unit_2d = unit_keys.reshape(vector_count, head_dim)
+    output_2d = output.reshape(vector_count, code_bytes)
+    _rotate_bucketize_pack_codes_kernel[(triton.cdiv(vector_count, 16),)](
+        unit_2d,
+        rotation,
+        boundaries,
+        output_2d,
+        vector_count,
+        BITS=bits,
+        BLOCK_VECTORS=16,
+        HEAD_DIM=head_dim,
+        CODE_BYTES=code_bytes,
+        BOUNDARY_COUNT=(1 << bits) - 1,
+        SQRT_D=sqrt(head_dim),
+        num_warps=4,
+    )
+    return output
+
+
 def _triton_bucketize_pack_codes(
     normalized: Any,
     boundaries: Any,
@@ -676,6 +759,101 @@ def _load_torch():
 if triton is not None and tl is not None:
 
     @triton.jit
+    def _rotate_bucketize_pack_codes_kernel(
+        unit_ptr,
+        rotation_ptr,
+        boundaries_ptr,
+        output_ptr,
+        vector_count,
+        BITS: tl.constexpr,
+        BLOCK_VECTORS: tl.constexpr,
+        HEAD_DIM: tl.constexpr,
+        CODE_BYTES: tl.constexpr,
+        BOUNDARY_COUNT: tl.constexpr,
+        SQRT_D: tl.constexpr,
+    ):
+        block_id = tl.program_id(0)
+        vector_offsets = block_id * BLOCK_VECTORS + tl.arange(0, BLOCK_VECTORS)
+        src_offsets = tl.arange(0, HEAD_DIM)
+        dst_offsets = tl.arange(0, HEAD_DIM)
+        vector_mask = vector_offsets < vector_count
+
+        unit_values = tl.load(
+            unit_ptr + vector_offsets[:, None] * HEAD_DIM + src_offsets[None, :],
+            mask=vector_mask[:, None],
+            other=0.0,
+        )
+        rotation_t = tl.load(
+            rotation_ptr + dst_offsets[None, :] * HEAD_DIM + src_offsets[:, None]
+        )
+        rotated = tl.dot(unit_values, rotation_t, input_precision="ieee") * SQRT_D
+
+        low = tl.full((BLOCK_VECTORS, HEAD_DIM), 0, dtype=tl.int32)
+        high = tl.full((BLOCK_VECTORS, HEAD_DIM), BOUNDARY_COUNT, dtype=tl.int32)
+        for _ in range(BITS):
+            mid = (low + high) // 2
+            boundary = tl.load(
+                boundaries_ptr + mid,
+                mask=mid < BOUNDARY_COUNT,
+                other=float("inf"),
+            )
+            go_right = rotated > boundary
+            low = tl.where(go_right, mid + 1, low)
+            high = tl.where(go_right, high, mid)
+
+        for group_id in tl.static_range(0, 8):
+            base_dim = group_id * 8
+            base_byte = group_id * 7
+            c0 = tl.sum(
+                tl.where(dst_offsets[None, :] == base_dim + 0, low, 0),
+                axis=1,
+            )
+            c1 = tl.sum(
+                tl.where(dst_offsets[None, :] == base_dim + 1, low, 0),
+                axis=1,
+            )
+            c2 = tl.sum(
+                tl.where(dst_offsets[None, :] == base_dim + 2, low, 0),
+                axis=1,
+            )
+            c3 = tl.sum(
+                tl.where(dst_offsets[None, :] == base_dim + 3, low, 0),
+                axis=1,
+            )
+            c4 = tl.sum(
+                tl.where(dst_offsets[None, :] == base_dim + 4, low, 0),
+                axis=1,
+            )
+            c5 = tl.sum(
+                tl.where(dst_offsets[None, :] == base_dim + 5, low, 0),
+                axis=1,
+            )
+            c6 = tl.sum(
+                tl.where(dst_offsets[None, :] == base_dim + 6, low, 0),
+                axis=1,
+            )
+            c7 = tl.sum(
+                tl.where(dst_offsets[None, :] == base_dim + 7, low, 0),
+                axis=1,
+            )
+
+            b0 = c0 | ((c1 & 0x01) << 7)
+            b1 = (c1 >> 1) | ((c2 & 0x03) << 6)
+            b2 = (c2 >> 2) | ((c3 & 0x07) << 5)
+            b3 = (c3 >> 3) | ((c4 & 0x0F) << 4)
+            b4 = (c4 >> 4) | ((c5 & 0x1F) << 3)
+            b5 = (c5 >> 5) | ((c6 & 0x3F) << 2)
+            b6 = (c6 >> 6) | (c7 << 1)
+            out_base = vector_offsets * CODE_BYTES + base_byte
+            tl.store(output_ptr + out_base + 0, b0.to(tl.uint8), mask=vector_mask)
+            tl.store(output_ptr + out_base + 1, b1.to(tl.uint8), mask=vector_mask)
+            tl.store(output_ptr + out_base + 2, b2.to(tl.uint8), mask=vector_mask)
+            tl.store(output_ptr + out_base + 3, b3.to(tl.uint8), mask=vector_mask)
+            tl.store(output_ptr + out_base + 4, b4.to(tl.uint8), mask=vector_mask)
+            tl.store(output_ptr + out_base + 5, b5.to(tl.uint8), mask=vector_mask)
+            tl.store(output_ptr + out_base + 6, b6.to(tl.uint8), mask=vector_mask)
+
+    @triton.jit
     def _bucketize_pack_codes_kernel(
         normalized_ptr,
         boundaries_ptr,
@@ -772,4 +950,5 @@ if triton is not None and tl is not None:
             tl.store(output_ptr + out_base + 13, b13.to(tl.uint8))
 
 else:  # pragma: no cover
+    _rotate_bucketize_pack_codes_kernel = None
     _bucketize_pack_codes_kernel = None

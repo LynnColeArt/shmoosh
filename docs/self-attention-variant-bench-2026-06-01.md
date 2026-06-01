@@ -298,6 +298,18 @@ to `0.8821ms`; the larger subphase shift is that `encode_pack_codes` dropped
 from `0.4281ms` to `0.0039ms`, with the fused work now counted under
 `encode_rotate_bucketize`.
 
+## Fused Rotate Bucketize Pack Follow-Up
+
+The fused rotation follow-up is recorded separately in
+`docs/fused-rotate-bucketize-pack-2026-06-01.md`.
+
+It extends the K7/no-QJL fast path by moving rotation into the Triton encode
+kernel. Synthetic K7 encode moved from `0.2343ms` in the fused bucketize+pack
+run to `0.2007ms` in the K7-only rerun. The 1024 image suite kept identical
+quality and recorded `1.065x` mean speedup. Mean packed encode moved from
+`0.8821ms` to `0.8342ms`, and mean rotate/bucketize moved from `0.5178ms` to
+`0.4722ms`.
+
 K6/no-QJL is now a legitimate speed-mode candidate, but K7/no-QJL remains the
 preferred default because the quality margin is clearer than the runtime margin.
 

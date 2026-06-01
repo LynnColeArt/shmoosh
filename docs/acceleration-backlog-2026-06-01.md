@@ -137,6 +137,13 @@ materialized code-index tensor. K7 synthetic encode improved from `0.3738ms` to
 PSNR and `1.070x` mean speedup, with mean packed encode moving from `0.9185ms`
 to `0.8821ms`. K6 was tested but rejected for this fast path because the image
 suite did not preserve the synthetic encode win.
+The fused rotation+bucketize+pack slice is recorded in
+`docs/fused-rotate-bucketize-pack-2026-06-01.md`. It moved K7/no-QJL rotation
+into the Triton encode kernel, kept byte-identical packed-code correctness in a
+CUDA unit test, and kept the 1024 image suite quality-identical. Mean packed
+encode moved from `0.8821ms` to `0.8342ms`; mean rotate/bucketize moved from
+`0.5178ms` to `0.4722ms`. This is a real kernel simplification, still not a
+visible whole-pipeline UX win by itself.
 
 The next slice should be:
 
@@ -144,7 +151,8 @@ The next slice should be:
 2. Treat late K7/no-QJL self-attention as a separate high-fidelity policy mode,
    not a default add-on to cached cross-attention.
 3. Look for the next self-attention speed lever beyond bit packing and
-   normalize/bucketize-pack cleanup: fuse rotation into the encode kernel,
-   fuse encode+attention, or try CUDA graphs/compile for fixed 1024 runs.
+   normalize/bucketize/rotation cleanup: fuse encode+attention, remove the
+   encode step from the attention representation, or try CUDA graphs/compile
+   for fixed 1024 runs.
 4. Revisit cross+self composition only after adding a new control surface, such
    as per-prompt policy choice or a stricter image-quality gate.

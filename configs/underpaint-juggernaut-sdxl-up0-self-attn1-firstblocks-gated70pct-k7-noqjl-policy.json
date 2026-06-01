@@ -75,6 +75,21 @@
       "mean_encode_rotate_bucketize_ms": 0.5178096773171867,
       "mean_encode_pack_codes_ms": 0.0039447676735343766
     },
+    "validation_suite_1024_fused_rotate_bucketize_pack": {
+      "output_dir": "captures/image-policy-suite-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-1024-fused-rotate-bucketize-pack",
+      "case_count": 3,
+      "min_psnr_db": 51.86549067487634,
+      "mean_psnr_db": 53.95682092188594,
+      "max_mse": 0.000006508050773845753,
+      "mean_baseline_seconds": 10.759777031295622,
+      "mean_shmoosh_seconds": 10.106708901623884,
+      "mean_speedup": 1.0646172889739416,
+      "mean_scheduled_quantized_ms": 3.8503093420769328,
+      "mean_packed_encode_ms": 0.8342225509868176,
+      "mean_packed_attention_ms": 1.451858927288817,
+      "mean_encode_rotate_bucketize_ms": 0.47224052509086,
+      "mean_encode_pack_codes_ms": 0.003599790269853892
+    },
     "processor_trace": {
       "output_dir": "captures/image-ab-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-1024-trace-reading-nook",
       "prompt": "reading-nook-seed1-1024",

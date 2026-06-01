@@ -6,6 +6,7 @@ from math import sqrt
 
 from shmoosh.packed_keys import (
     _pack_bits,
+    _triton_rotate_bucketize_pack_codes,
     _triton_bucketize_pack_codes,
     _unpack_bits,
     encode_packed_keys,
@@ -172,6 +173,42 @@ def test_triton_bucketize_pack_codes_matches_torch(bits: int) -> None:
 
     assert torch.equal(packed, expected)
     assert torch.equal(_unpack_bits(packed, bits=bits, value_count=64), indices)
+
+
+@pytest.mark.skipif(
+    triton is None or not torch.cuda.is_available(),
+    reason="CUDA Triton is not available",
+)
+def test_triton_rotate_bucketize_pack_codes_matches_torch() -> None:
+    generator = torch.Generator(device="cuda").manual_seed(10)
+    keys = torch.randn(
+        1,
+        2,
+        17,
+        64,
+        generator=generator,
+        device="cuda",
+        dtype=torch.float16,
+    )
+    codec = ShmooshCodec(dim=64, bits=7, qjl_bits=0, seed=3, codebook_samples=512)
+    resources = score_resources_from_codec(codec, device=keys.device)
+    keys_f = keys.detach().to(dtype=torch.float32)
+    norms = torch.linalg.vector_norm(keys_f, dim=-1)
+    safe_norms = torch.where(norms > 0, norms, torch.ones_like(norms))
+    unit = (keys_f / safe_norms.unsqueeze(-1)).contiguous()
+    normalized = (torch.matmul(unit, resources.rotation.T) * sqrt(64)).contiguous()
+    indices = torch.bucketize(normalized, resources.boundaries).to(dtype=torch.int64)
+    expected = _pack_bits(indices, bits=7)
+
+    packed = _triton_rotate_bucketize_pack_codes(
+        unit,
+        resources.rotation,
+        resources.boundaries,
+        bits=7,
+    )
+
+    assert torch.equal(packed, expected)
+    assert torch.equal(_unpack_bits(packed, bits=7, value_count=64), indices)
 
 
 def test_packed_key_bytes_match_sdxl_assumption() -> None:

@@ -111,3 +111,10 @@ The next encode lever is to reduce the remaining rotate/bucketize work itself:
 either fuse rotation with bucketize/pack, or replace the rotation-plus-boundary
 pipeline with a representation that the attention kernel can consume more
 directly.
+
+## Fused Rotation Follow-Up
+
+The fused rotation follow-up is recorded in
+`docs/fused-rotate-bucketize-pack-2026-06-01.md`. It moved the K7/no-QJL
+rotation into the Triton encode kernel. The 1024 image suite stayed
+quality-identical and mean packed encode moved from `0.8821ms` to `0.8342ms`.
