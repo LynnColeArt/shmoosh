@@ -47,6 +47,19 @@
       "mean_packed_encode_ms": 1.0193442727479673,
       "mean_packed_attention_ms": 1.5193703713724537
     },
+    "validation_suite_1024_inplace_normalize": {
+      "output_dir": "captures/image-policy-suite-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-1024-inplace-normalize",
+      "case_count": 3,
+      "min_psnr_db": 51.86549067487634,
+      "mean_psnr_db": 53.95682092188594,
+      "max_mse": 0.000006508050773845753,
+      "mean_baseline_seconds": 10.121806232336288,
+      "mean_shmoosh_seconds": 9.404676086967811,
+      "mean_speedup": 1.0762525087240606,
+      "mean_scheduled_quantized_ms": 3.4842536724345,
+      "mean_packed_encode_ms": 0.9185031220247901,
+      "mean_packed_attention_ms": 1.4283602617474065
+    },
     "processor_trace": {
       "output_dir": "captures/image-ab-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-1024-trace-reading-nook",
       "prompt": "reading-nook-seed1-1024",

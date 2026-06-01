@@ -273,9 +273,12 @@ def _encode_packed_keys_torch(
         timing_metadata,
     ):
         keys_f = keys.detach().to(dtype=torch.float32)
+        if keys_f.data_ptr() == keys.data_ptr():
+            keys_f = keys_f.clone()
+        raw_keys_f = keys_f if qjl_bits == 0 else keys_f.clone()
         norms = torch.linalg.vector_norm(keys_f, dim=-1)
         safe_norms = torch.where(norms > 0, norms, torch.ones_like(norms))
-        unit = keys_f / safe_norms.unsqueeze(-1)
+        keys_f.div_(safe_norms.unsqueeze(-1))
     with _timing_span(
         timing_recorder,
         "encode_rotate_bucketize",
@@ -284,7 +287,7 @@ def _encode_packed_keys_torch(
         step_state,
         timing_metadata,
     ):
-        rotated = torch.matmul(unit, rotation.T)
+        rotated = torch.matmul(keys_f, rotation.T)
         normalized = rotated * sqrt(head_dim)
         indices = torch.bucketize(
             normalized.contiguous(),
@@ -324,7 +327,7 @@ def _encode_packed_keys_torch(
                 raise ValueError("score resources QJL matrix does not match key block")
             code_values = codebook[indices] * (1.0 / sqrt(head_dim))
             decoded_unit = torch.matmul(code_values, rotation)
-            residual = keys_f - decoded_unit * norms.unsqueeze(-1)
+            residual = raw_keys_f - decoded_unit * norms.unsqueeze(-1)
             residual_norms = torch.linalg.vector_norm(residual, dim=-1)
             sign_bits = (torch.matmul(residual, qjl_matrix.T) >= 0).to(
                 dtype=torch.int64

@@ -259,6 +259,28 @@ same 70% self-attention gate:
 | K6/no-QJL 70% | 50.38 dB | 52.91 dB | 1.082x |
 | K7/no-QJL 70% | 51.87 dB | 53.96 dB | 1.066x |
 
+## Encode Normalize V2 Follow-Up
+
+The encode-normalize follow-up is recorded separately in
+`docs/encode-normalize-v2-2026-06-01.md`.
+
+It keeps the same policy and packed format, but normalizes the float32 key
+working copy in place instead of allocating a separate normalized tensor. The
+folded-math alternative was tested and rejected because it did not improve the
+synthetic result.
+
+Sequential synthetic 1024-token no-QJL comparison:
+
+| Variant | Total before | Total after | Encode before | Encode after | Attention before | Attention after |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| K6/no-QJL | 0.9278 | 0.8917 | 0.2855 | 0.2509 | 0.6722 | 0.6402 |
+| K7/no-QJL | 0.9596 | 0.9382 | 0.3949 | 0.3738 | 0.6480 | 0.6850 |
+
+The image suites stayed in-family: K7/no-QJL retained `51.87 dB` minimum PSNR
+with `1.076x` mean speedup, while K6/no-QJL retained `50.38 dB` minimum PSNR
+with `1.092x` mean speedup. This is an encode cleanup, not a new policy
+default.
+
 K6/no-QJL is now a legitimate speed-mode candidate, but K7/no-QJL remains the
 preferred default because the quality margin is clearer than the runtime margin.
 

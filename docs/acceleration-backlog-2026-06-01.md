@@ -121,14 +121,22 @@ speedup, but loses quality (`50.38 dB` min PSNR, `52.91 dB` mean PSNR) versus
 K7/no-QJL (`51.87 dB` min PSNR, `53.96 dB` mean PSNR). Keep K7/no-QJL as the
 preferred 1024 self-attention default; keep K6/no-QJL as an explicit speed
 tradeoff policy.
+The encode-normalize V2 slice is recorded in
+`docs/encode-normalize-v2-2026-06-01.md`. It replaced an extra normalized tensor
+with in-place normalization on the float32 working copy, while preserving raw
+keys only for QJL residual correction. Synthetic K6/K7 no-QJL encode improved
+from `0.2855ms` to `0.2509ms` for K6 and from `0.3949ms` to `0.3738ms` for K7.
+The three-case 1024 suites stayed quality-correct: K7/no-QJL at `51.87 dB`
+minimum PSNR and `1.076x` mean speedup; K6/no-QJL at `50.38 dB` minimum PSNR
+and `1.092x` mean speedup. This is a small encode cleanup, not a new default.
 
 The next slice should be:
 
 1. Keep the cached cross-attention policy as the baseline policy layer.
 2. Treat late K7/no-QJL self-attention as a separate high-fidelity policy mode,
    not a default add-on to cached cross-attention.
-3. Look for the next self-attention speed lever beyond bit packing:
-   fuse encode+attention, reduce projection/bucketize overhead, or try CUDA
-   graphs/compile for fixed 1024 runs.
+3. Look for the next self-attention speed lever beyond bit packing and
+   normalize cleanup: fuse encode+attention, reduce projection/bucketize
+   overhead, or try CUDA graphs/compile for fixed 1024 runs.
 4. Revisit cross+self composition only after adding a new control surface, such
    as per-prompt policy choice or a stricter image-quality gate.

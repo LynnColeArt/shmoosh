@@ -137,6 +137,22 @@ K6/no-QJL is now a real speed-mode candidate:
 K7/no-QJL remains the preferred 1024 self-attention default because the quality
 margin is clearer than the K6 speed margin.
 
+## Encode Normalize Follow-Up
+
+The next encode-side cleanup is recorded in
+`docs/encode-normalize-v2-2026-06-01.md`. It normalizes the float32 key working
+copy in place instead of allocating a separate normalized tensor. Synthetic
+encode improved for both same-policy no-QJL variants:
+
+| Variant | Encode ms before | Encode ms after | Total ms before | Total ms after |
+| --- | ---: | ---: | ---: | ---: |
+| K6/no-QJL | 0.2855 | 0.2509 | 0.9278 | 0.8917 |
+| K7/no-QJL | 0.3949 | 0.3738 | 0.9596 | 0.9382 |
+
+The 1024 image suites stayed quality-correct: K7/no-QJL remained the preferred
+quality policy at `51.87 dB` minimum PSNR, and K6/no-QJL remained a speed-mode
+tradeoff at `50.38 dB` minimum PSNR.
+
 Next kernel pressure points:
 
 1. Reduce or fuse the rotate/bucketize encode path.
