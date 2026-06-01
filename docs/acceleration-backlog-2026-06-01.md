@@ -52,11 +52,14 @@ modules passed single-module 1024 probes with exact-first 50% activation, and
 their three-module composition passed the reading-nook 1024 prompt at
 `50.57 dB` PSNR. The same self-attention policy also cleared the three-case
 1024 suite with `49.62 dB` minimum PSNR and a `1.057x` mean runtime signal.
+The self-attention trace shows `packed_attention` at `0.1329s` and
+`packed_encode` at `0.0750s` across 30 quantized calls, so the 1024-token path
+needs streaming attention work as well as encode work.
 
 The next slice should be:
 
-1. Trace the composed self-attention policy to split encode time from fused
-   attention time.
-2. Keep the cached cross-attention policy as the baseline policy layer.
-3. Composition-test the accepted self-attention candidate with the cached cross-attention
+1. Keep the cached cross-attention policy as the baseline policy layer.
+2. Composition-test the accepted self-attention candidate with the cached cross-attention
    policy before treating it as a real runtime win.
+3. After composition testing, profile the self-attention streaming kernel and
+   compare QJL64/no-QJL variants for this 1024-token path.

@@ -34,7 +34,14 @@
       "mean_shmoosh_seconds": 9.16063933679834,
       "mean_speedup": 1.0565194269517628
     },
-    "note": "Single-module probes, the three-module composition smoke, and the three-case 1024 suite passed. Trace before mixing with the cached cross-attention policy so encode and fused-attention costs are visible."
+    "trace_reading_nook_1024": {
+      "output_dir": "captures/image-ab-juggernaut-up0-self-attn1-firstblocks-gated50pct-k6-1024-trace-reading-nook",
+      "record_count": 360,
+      "packed_encode_seconds": 0.07500492339022458,
+      "packed_attention_seconds": 0.1329330517910421,
+      "scheduled_quantized_seconds": 0.234809095505625
+    },
+    "note": "Single-module probes, the three-module composition smoke, and the three-case 1024 suite passed. The trace shows self-attention spends more time in packed attention than in encode, unlike text-key cross-attention."
   },
   "default": {
     "quantize_keys": false,

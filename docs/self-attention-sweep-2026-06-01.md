@@ -163,6 +163,70 @@ Suite aggregate:
 - mean Shmoosh: `9.1606s`
 - mean speedup: `1.057x`
 
+## Processor Trace
+
+The composed self-attention policy was traced on the reading-nook 1024 case:
+
+```bash
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+uv run shmoosh-image-ab-smoke \
+  --single-file /home/lynn/.underpaint/models/checkpoints/juggernaut-x-v10/Juggernaut-X-RunDiffusion-NSFW.safetensors \
+  --config stabilityai/stable-diffusion-xl-base-1.0 \
+  --pipeline-class sdxl \
+  --component unet \
+  --policy-file configs/underpaint-juggernaut-sdxl-up0-self-attn1-firstblocks-gated50pct-k6-qjl128-policy.json \
+  --prompt "a cozy reading nook with a green velvet chair, a small wooden table, warm window light, realistic photo" \
+  --output-dir captures/image-ab-juggernaut-up0-self-attn1-firstblocks-gated50pct-k6-1024-trace-reading-nook \
+  --steps 20 \
+  --height 1024 \
+  --width 1024 \
+  --guidance-scale 5.0 \
+  --seed 1 \
+  --dtype fp16 \
+  --device cuda \
+  --model-cpu-offload \
+  --local-files-only \
+  --bits 6 \
+  --qjl-bits 128 \
+  --attention-backend packed \
+  --packed-backend auto \
+  --trace-processor-timing
+```
+
+Trace summary:
+
+```text
+baseline_seconds=11.4621
+shmoosh_seconds=9.6313
+psnr=50.57dB
+record_count=360
+```
+
+Processor timing:
+
+| Phase | Calls | Seconds | Mean per call |
+| --- | ---: | ---: | ---: |
+| `packed_attention` | 30 | 0.1329 | 4.431 ms |
+| `packed_encode` | 30 | 0.0750 | 2.500 ms |
+| `scheduled_quantized` | 30 | 0.2348 | 7.827 ms |
+| `scheduled_exact` | 30 | 0.0260 | 0.867 ms |
+| `policy_dispatch` | 60 | 0.0002 | 0.003 ms |
+
+Encode subphases:
+
+| Phase | Calls | Seconds | Mean per call |
+| --- | ---: | ---: | ---: |
+| `encode_pack_residual_signs` | 30 | 0.0260 | 0.865 ms |
+| `encode_pack_codes` | 30 | 0.0256 | 0.855 ms |
+| `encode_residual_project` | 30 | 0.0121 | 0.403 ms |
+| `encode_rotate_bucketize` | 30 | 0.0054 | 0.178 ms |
+| `encode_normalize` | 30 | 0.0039 | 0.132 ms |
+
+This flips the bottleneck shape from text-key cross-attention. In selected
+cross-attention, tiny 77-token K made encode dominate. In 1024-token
+self-attention, the fused streaming attention path is the larger measured
+component, while encode remains meaningful but secondary.
+
 ## Readout
 
 This is a real positive signal, but still not the full runtime answer:
@@ -172,12 +236,14 @@ This is a real positive signal, but still not the full runtime answer:
 - composition across the first self-attention block in three `up_blocks.0`
   attention groups also passes the first prompt;
 - the three-case 1024 suite cleared fidelity with a small mean runtime win;
+- the processor trace shows self-attention needs attention-kernel work as much
+  as encode work;
 - the policy has not yet been mixed with the cached cross-attention policy.
 
 Next slice:
 
-1. Trace the composed self-attention run to split encode cost from fused
-   attention cost.
-2. Composition-test it with the cached cross-attention policy.
-3. If the combined policy clears, run the three-case 1024 suite on the combined
+1. Composition-test it with the cached cross-attention policy.
+2. If the combined policy clears, run the three-case 1024 suite on the combined
    denoising policy.
+3. After composition, profile the self-attention streaming kernel and compare
+   QJL64/no-QJL variants for this 1024-token path.
