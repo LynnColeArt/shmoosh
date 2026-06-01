@@ -153,6 +153,39 @@ def test_packed_processor_records_timing_phases() -> None:
     assert {row["phase"] for row in payload["summary"]["by_phase"]} == set(phases)
 
 
+def test_packed_processor_caches_cross_attention_keys() -> None:
+    generator = torch.Generator().manual_seed(2)
+    hidden_states = torch.randn(1, 5, 16, generator=generator)
+    encoder_hidden_states = torch.randn(1, 7, 16, generator=generator)
+    attn = _FakeAttention(heads=2)
+    recorder = ShmooshTimingRecorder()
+    processor = ShmooshAttnProcessor(
+        bits=4,
+        qjl_bits=16,
+        seed=3,
+        quantize_values=False,
+        codebook_samples=2_000,
+        attention_backend="packed",
+        packed_backend="torch",
+        cache_cross_attention=True,
+        timing_recorder=recorder,
+        timing_module="fake.attn2",
+        step_state=DenoisingStepState(current_step=6, total_steps=20),
+    )
+
+    first = processor(attn, hidden_states, encoder_hidden_states=encoder_hidden_states)
+    second = processor(attn, hidden_states, encoder_hidden_states=encoder_hidden_states)
+
+    assert first.shape == hidden_states.shape
+    assert second.shape == hidden_states.shape
+    assert len(processor._cross_attention_cache) == 1
+    cache_records = [
+        record for record in recorder.records if record["phase"] == "cross_kv_cache"
+    ]
+    assert [record["hit"] for record in cache_records] == [False, True]
+    assert sum(record["phase"] == "packed_encode" for record in recorder.records) == 1
+
+
 def test_scheduled_processor_records_dispatch_and_branch_timing() -> None:
     recorder = ShmooshTimingRecorder()
     step_state = DenoisingStepState(current_step=0, total_steps=20)

@@ -106,6 +106,14 @@ class _TimingSpan:
 
 
 @dataclass(frozen=True)
+class _CachedCrossAttention:
+    block: Any
+    value: Any
+    key_tokens: int
+    heads: int
+
+
+@dataclass(frozen=True)
 class ScheduledShmooshAttnProcessor:
     original_processor: Any
     shmoosh_processor: Any
@@ -215,6 +223,7 @@ class ShmooshAttnProcessor:
     fallback_on_mask: bool = True
     attention_backend: str = "reference"
     packed_backend: str = "auto"
+    cache_cross_attention: bool = False
     timing_recorder: ShmooshTimingRecorder | None = field(
         default=None,
         repr=False,
@@ -233,6 +242,12 @@ class ShmooshAttnProcessor:
         compare=False,
     )
     _packed_resource_cache: dict[tuple[int, int, int, int, int, int, str], Any] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+        compare=False,
+    )
+    _cross_attention_cache: dict[tuple[Any, ...], _CachedCrossAttention] = field(
         default_factory=dict,
         init=False,
         repr=False,
@@ -297,26 +312,20 @@ class ShmooshAttnProcessor:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
         query = attn.to_q(hidden_states)
+        is_cross_attention = encoder_hidden_states is not None
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-
-        inner_dim = key.shape[-1]
+        inner_dim = query.shape[-1]
         head_dim = inner_dim // attn.heads
 
         query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
         if attn.norm_q is not None:
             query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
 
         if self._use_packed_attention():
             key_bits = self.key_bits or self.bits
@@ -327,28 +336,67 @@ class ShmooshAttnProcessor:
                 bits=key_bits,
                 codec=codec,
             )
+            cache_key = self._cross_attention_cache_key(
+                encoder_hidden_states,
+                head_dim=head_dim,
+                bits=key_bits,
+                query_device=query.device,
+            ) if self._can_cache_cross_attention(is_cross_attention) else None
+            cached = (
+                self._cross_attention_cache.get(cache_key)
+                if cache_key is not None
+                else None
+            )
+            self._record_cross_cache(cached is not None)
+            if cached is None:
+                with self._timing_span(
+                    "cross_kv_project",
+                    encoder_hidden_states,
+                    {"cross_attention": is_cross_attention},
+                ):
+                    key = attn.to_k(encoder_hidden_states)
+                    value = attn.to_v(encoder_hidden_states)
+                    key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                    value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                    if attn.norm_k is not None:
+                        key = attn.norm_k(key)
+                key_tokens = int(key.shape[2])
+                heads = int(key.shape[1])
+            else:
+                block = cached.block
+                value = cached.value
+                key_tokens = cached.key_tokens
+                heads = cached.heads
             packed_metadata = {
                 "backend": self.packed_backend,
                 "bits": key_bits,
                 "qjl_bits": self.qjl_bits,
-                "heads": int(key.shape[1]),
+                "heads": heads,
                 "query_tokens": int(query.shape[2]),
-                "key_tokens": int(key.shape[2]),
+                "key_tokens": key_tokens,
                 "head_dim": head_dim,
             }
-            with self._timing_span("packed_encode", key, packed_metadata):
-                block = encode_packed_keys(
-                    key,
-                    bits=key_bits,
-                    qjl_bits=self.qjl_bits,
-                    seed=self.seed,
-                    codebook_samples=self.codebook_samples,
-                    codec=codec,
-                    resources=resources,
-                    timing_recorder=self.timing_recorder,
-                    timing_module=self.timing_module,
-                    step_state=self.step_state,
-                )
+            if cached is None:
+                with self._timing_span("packed_encode", key, packed_metadata):
+                    block = encode_packed_keys(
+                        key,
+                        bits=key_bits,
+                        qjl_bits=self.qjl_bits,
+                        seed=self.seed,
+                        codebook_samples=self.codebook_samples,
+                        codec=codec,
+                        resources=resources,
+                        timing_recorder=self.timing_recorder,
+                        timing_module=self.timing_module,
+                        step_state=self.step_state,
+                    )
+                if cache_key is not None:
+                    self._cross_attention_cache[cache_key] = _CachedCrossAttention(
+                        block=block,
+                        value=value,
+                        key_tokens=key_tokens,
+                        heads=heads,
+                    )
             with self._timing_span("packed_attention", query, packed_metadata):
                 hidden_states = packed_key_attention_output(
                     query,
@@ -358,6 +406,12 @@ class ShmooshAttnProcessor:
                     backend=self.packed_backend,
                 )
         else:
+            key = attn.to_k(encoder_hidden_states)
+            value = attn.to_v(encoder_hidden_states)
+            key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+            value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+            if attn.norm_k is not None:
+                key = attn.norm_k(key)
             reference_metadata = {
                 "bits": self.bits,
                 "qjl_bits": self.qjl_bits,
@@ -418,6 +472,49 @@ class ShmooshAttnProcessor:
             step_state=self.step_state,
             tensor=tensor,
             metadata=metadata,
+        )
+
+    def _can_cache_cross_attention(self, is_cross_attention: bool) -> bool:
+        return self.cache_cross_attention and is_cross_attention
+
+    def _cross_attention_cache_key(
+        self,
+        encoder_hidden_states: Any,
+        *,
+        head_dim: int,
+        bits: int,
+        query_device: Any,
+    ) -> tuple[Any, ...]:
+        torch = _load_torch()
+        query_device = torch.device(query_device)
+        if query_device.type == "cuda" and query_device.index is None:
+            query_device = torch.device("cuda", torch.cuda.current_device())
+        data_ptr = getattr(encoder_hidden_states, "data_ptr", None)
+        tensor_id = int(data_ptr()) if callable(data_ptr) else id(encoder_hidden_states)
+        return (
+            tensor_id,
+            tuple(int(size) for size in encoder_hidden_states.shape),
+            str(encoder_hidden_states.dtype),
+            str(encoder_hidden_states.device),
+            _tensor_version(encoder_hidden_states),
+            str(query_device),
+            head_dim,
+            bits,
+            self.qjl_bits,
+            self.seed,
+            self.codebook_samples,
+        )
+
+    def _record_cross_cache(self, hit: bool) -> None:
+        if not self.cache_cross_attention or self.timing_recorder is None:
+            return
+        start = time.perf_counter()
+        self.timing_recorder.record(
+            "cross_kv_cache",
+            seconds=time.perf_counter() - start,
+            module=self.timing_module,
+            step_state=self.step_state,
+            metadata={"hit": hit},
         )
 
     def warm_packed_attention(
@@ -592,6 +689,13 @@ def _synchronize_if_needed(recorder: ShmooshTimingRecorder, tensor: Any | None) 
         return
     torch = _load_torch()
     torch.cuda.synchronize(tensor.device)
+
+
+def _tensor_version(tensor: Any) -> int | None:
+    try:
+        return getattr(tensor, "_version")
+    except RuntimeError:
+        return None
 
 
 def _aggregate_timing(

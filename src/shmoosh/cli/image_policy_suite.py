@@ -83,6 +83,11 @@ def main() -> None:
         action="store_true",
         help="Record per-processor timing spans in each case metrics JSON.",
     )
+    parser.add_argument(
+        "--cache-cross-attention",
+        action="store_true",
+        help="Cache packed cross-attention K/V across denoising steps.",
+    )
     args = parser.parse_args()
 
     torch = _load_torch_and_diffusers()

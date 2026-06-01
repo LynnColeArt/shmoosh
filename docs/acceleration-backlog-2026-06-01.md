@@ -43,10 +43,13 @@ only inside selected U-Net cross-attention modules:
 
 ## Resume After Next Slice
 
-The immediate next slice remains:
+The maple short-case trace and prompt-layer K/V cache slice are now done. The
+cache is correct and modestly useful, but selected text-key cross-attention is
+too small to be the main speed lever.
 
-1. Trace a short losing case, such as maple-leaf, with vectorized packing.
-2. Identify whether the remaining overhead is launch count, scheduled wrapper
-   time, packed attention, encode, or fallback behavior.
-3. Then choose between prompt-layer K/V cache, late-step self-attention sweep,
-   or launch-overhead reduction as the next implementation target.
+The next slice should be:
+
+1. Run a late-step self-attention sweep at 1024 with exact V.
+2. Keep the cached cross-attention policy as the baseline policy layer.
+3. Composition-test any self-attention candidate with the cached cross-attention
+   policy before treating it as a real runtime win.

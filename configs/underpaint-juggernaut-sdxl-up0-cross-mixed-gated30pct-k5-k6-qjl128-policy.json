@@ -52,7 +52,8 @@
     "codebook_samples": 20000,
     "processor_seed": 11,
     "quantize_keys": true,
-    "quantize_values": false
+    "quantize_values": false,
+    "cache_cross_attention": true
   },
   "quantized_modules": [
     {

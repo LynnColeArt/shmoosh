@@ -301,3 +301,47 @@ speedup with `mean_psnr=52.59 dB` and `min_psnr=49.40 dB`. The result is
 positive but still shape-dependent: the longer reading-nook case benefits
 strongly, while the shorter maple and misty cases still lose to fixed packed
 path overhead.
+
+## Cross-Attention Cache Slice
+
+The next prompt-layer slice cached packed text-key blocks and exact V tensors for
+cross-attention modules across denoising steps. The accepted 30% gated policy has
+`14` quantized steps at a `20` step horizon, so each selected module should encode
+once at the first quantized step and reuse prompt-derived K/V for the remaining
+steps. The cache key includes prompt tensor identity, shape, dtype, device,
+target query device, head dimension, bit depth, QJL bits, seed, and codebook
+settings.
+
+Traced maple-leaf 1024 run after enabling the cache:
+
+```text
+cross_kv_cache_hits=91
+cross_kv_cache_misses=7
+packed_encode_calls=7
+packed_encode_seconds=0.0083
+packed_attention_calls=98
+packed_attention_seconds=0.2002
+scheduled_quantized_seconds=0.2639
+psnr=49.40dB
+```
+
+Compared with the vector-packing trace before K/V caching:
+
+| phase | before cache | after cache |
+| --- | ---: | ---: |
+| packed_encode | 0.1211s / 98 calls | 0.0083s / 7 calls |
+| packed_attention | 0.1952s / 98 calls | 0.2002s / 98 calls |
+| scheduled_quantized | 0.3893s / 98 calls | 0.2639s / 98 calls |
+
+The untraced three-case 1024 suite improved modestly:
+
+| case | baseline seconds | shmoosh seconds | speed ratio | PSNR |
+| --- | ---: | ---: | ---: | ---: |
+| reading-nook-seed1-1024 | 12.0325 | 10.5928 | 1.136x | 50.54 dB |
+| maple-leaf-seed2-1024 | 9.4116 | 9.3131 | 1.011x | 49.40 dB |
+| misty-lake-seed3-1024 | 9.2251 | 9.4091 | 0.980x | 57.84 dB |
+
+Mean time was `10.2231s` baseline versus `9.7717s` Shmoosh, a `1.046x` suite
+speedup. The cache is a correct prompt-layer optimization, and it flips the
+maple short case positive in this run, but it is still a modest lever because
+packed text-key attention itself is already small.

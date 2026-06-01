@@ -299,13 +299,20 @@ The vectorized Torch packing slice reduced the CUDA encode microcheck from
 three-case 1024 suite win: `10.2304s` mean baseline versus `9.8699s` mean
 Shmoosh.
 
+Prompt-layer K/V caching now lets selected cross-attention modules encode packed
+text K once at the first quantized timestep, then reuse the packed block and
+exact V for the rest of the denoising window. On the traced maple-leaf case this
+changed packed encode from `98` calls and `0.1211s` to `7` calls and `0.0083s`.
+The untraced three-case 1024 suite moved to `10.2231s` mean baseline versus
+`9.7717s` mean Shmoosh, a `1.046x` speedup.
+
 ## Acceptance
 
-The next implementation slice should explain the remaining short-case overhead:
+The next implementation slice should move beyond selected text-key
+cross-attention:
 
-1. Trace one short losing case, such as maple-leaf, with the vectorized packer.
-2. Compare scheduled quantized overhead against packed attention and packed
-   encode by module and step.
-3. Use the timing report to choose whether the next kernel work should reduce
-   launch count, fuse encode with attention for text-key modules, or tune the
-   remaining fallback shapes.
+1. Start a late-step self-attention sweep at 1024, where key counts are much
+   larger than 77-token text cross-attention.
+2. Keep exact early timesteps and exact V for the first pass.
+3. Compare the self-attention policy against the cached cross-attention policy
+   alone, then test composition instead of assuming single-module wins compose.

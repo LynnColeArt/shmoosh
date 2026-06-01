@@ -94,6 +94,11 @@ def main() -> None:
         action="store_true",
         help="Record per-processor timing spans in metrics JSON.",
     )
+    parser.add_argument(
+        "--cache-cross-attention",
+        action="store_true",
+        help="Cache packed cross-attention K/V across denoising steps.",
+    )
     args = parser.parse_args()
     if not args.list_modules and not args.prompt:
         raise SystemExit("--prompt is required unless --list-modules is used.")
@@ -414,6 +419,7 @@ def _processor_config(
         "codebook_samples": args.codebook_samples,
         "attention_backend": args.attention_backend,
         "packed_backend": args.packed_backend,
+        "cache_cross_attention": getattr(args, "cache_cross_attention", False),
     }
     if policy is None:
         return config
@@ -439,6 +445,7 @@ def _apply_processor_overrides(config: dict[str, Any], overrides: Any) -> None:
         ("codebook_samples", "codebook_samples"),
         ("attention_backend", "attention_backend"),
         ("packed_backend", "packed_backend"),
+        ("cache_cross_attention", "cache_cross_attention"),
     ):
         if source_key in overrides:
             config[target_key] = overrides[source_key]
@@ -539,6 +546,7 @@ def _processor_metadata(config: dict[str, Any]) -> dict[str, Any]:
         "quantize_values": config["quantize_values"],
         "attention_backend": config["attention_backend"],
         "packed_backend": config["packed_backend"],
+        "cache_cross_attention": config["cache_cross_attention"],
     }
 
 
