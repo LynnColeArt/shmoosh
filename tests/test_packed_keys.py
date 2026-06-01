@@ -2,8 +2,16 @@ from __future__ import annotations
 
 import pytest
 
-from shmoosh.packed_keys import _pack_bits, _unpack_bits, encode_packed_keys
+from math import sqrt
+
+from shmoosh.packed_keys import (
+    _pack_bits,
+    _triton_bucketize_pack_codes,
+    _unpack_bits,
+    encode_packed_keys,
+)
 from shmoosh.packed_scores import score_resources_from_codec
+from shmoosh.packed_scores import triton
 from shmoosh.quantization import ShmooshCodec
 
 torch = pytest.importorskip("torch")
@@ -126,6 +134,44 @@ def test_encode_packed_keys_with_torch_resources_matches_reference() -> None:
     assert torch.allclose(torch_block.norms, reference.norms)
     assert torch.equal(torch_block.residual_signs, reference.residual_signs)
     assert torch.allclose(torch_block.residual_norms, reference.residual_norms)
+
+
+@pytest.mark.skipif(
+    triton is None or not torch.cuda.is_available(),
+    reason="CUDA Triton is not available",
+)
+@pytest.mark.parametrize("bits", [6, 7])
+def test_triton_bucketize_pack_codes_matches_torch(bits: int) -> None:
+    generator = torch.Generator(device="cuda").manual_seed(9)
+    keys = torch.randn(
+        1,
+        2,
+        17,
+        64,
+        generator=generator,
+        device="cuda",
+        dtype=torch.float16,
+    )
+    codec = ShmooshCodec(dim=64, bits=bits, qjl_bits=0, seed=3, codebook_samples=512)
+    resources = score_resources_from_codec(codec, device=keys.device)
+    keys_f = keys.detach().to(dtype=torch.float32)
+    norms = torch.linalg.vector_norm(keys_f, dim=-1)
+    safe_norms = torch.where(norms > 0, norms, torch.ones_like(norms))
+    normalized = (
+        torch.matmul(keys_f / safe_norms.unsqueeze(-1), resources.rotation.T)
+        * sqrt(64)
+    ).contiguous()
+    indices = torch.bucketize(normalized, resources.boundaries).to(dtype=torch.int64)
+    expected = _pack_bits(indices, bits=bits)
+
+    packed = _triton_bucketize_pack_codes(
+        normalized,
+        resources.boundaries,
+        bits=bits,
+    )
+
+    assert torch.equal(packed, expected)
+    assert torch.equal(_unpack_bits(packed, bits=bits, value_count=64), indices)
 
 
 def test_packed_key_bytes_match_sdxl_assumption() -> None:

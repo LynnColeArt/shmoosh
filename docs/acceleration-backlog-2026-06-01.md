@@ -129,6 +129,14 @@ from `0.2855ms` to `0.2509ms` for K6 and from `0.3949ms` to `0.3738ms` for K7.
 The three-case 1024 suites stayed quality-correct: K7/no-QJL at `51.87 dB`
 minimum PSNR and `1.076x` mean speedup; K6/no-QJL at `50.38 dB` minimum PSNR
 and `1.092x` mean speedup. This is a small encode cleanup, not a new default.
+The fused bucketize/pack slice is recorded in
+`docs/fused-bucketize-pack-2026-06-01.md`. It adds a K7/no-QJL Triton fast path
+that writes packed codes directly after boundary search, avoiding the
+materialized code-index tensor. K7 synthetic encode improved from `0.3738ms` to
+`0.2343ms`; the K7 image suite stayed quality-identical at `51.87 dB` minimum
+PSNR and `1.070x` mean speedup, with mean packed encode moving from `0.9185ms`
+to `0.8821ms`. K6 was tested but rejected for this fast path because the image
+suite did not preserve the synthetic encode win.
 
 The next slice should be:
 
@@ -136,7 +144,7 @@ The next slice should be:
 2. Treat late K7/no-QJL self-attention as a separate high-fidelity policy mode,
    not a default add-on to cached cross-attention.
 3. Look for the next self-attention speed lever beyond bit packing and
-   normalize cleanup: fuse encode+attention, reduce projection/bucketize
-   overhead, or try CUDA graphs/compile for fixed 1024 runs.
+   normalize/bucketize-pack cleanup: fuse rotation into the encode kernel,
+   fuse encode+attention, or try CUDA graphs/compile for fixed 1024 runs.
 4. Revisit cross+self composition only after adding a new control surface, such
    as per-prompt policy choice or a stricter image-quality gate.

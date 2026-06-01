@@ -281,6 +281,23 @@ with `1.076x` mean speedup, while K6/no-QJL retained `50.38 dB` minimum PSNR
 with `1.092x` mean speedup. This is an encode cleanup, not a new policy
 default.
 
+## Fused Bucketize Pack Follow-Up
+
+The fused bucketize/pack follow-up is recorded separately in
+`docs/fused-bucketize-pack-2026-06-01.md`.
+
+It adds a K7/no-QJL CUDA fast path that performs codebook-boundary search and
+bit packing in one Triton kernel, avoiding a materialized code-index tensor.
+K6 was tested but rejected for this fast path because the image-level trace did
+not keep the synthetic win.
+
+K7 synthetic encode moved from `0.3738ms` to `0.2343ms`. The K7 1024 image
+suite kept identical quality (`51.87 dB` minimum PSNR, `53.96 dB` mean PSNR)
+and recorded `1.070x` mean speedup. Mean packed encode moved from `0.9185ms`
+to `0.8821ms`; the larger subphase shift is that `encode_pack_codes` dropped
+from `0.4281ms` to `0.0039ms`, with the fused work now counted under
+`encode_rotate_bucketize`.
+
 K6/no-QJL is now a legitimate speed-mode candidate, but K7/no-QJL remains the
 preferred default because the quality margin is clearer than the runtime margin.
 

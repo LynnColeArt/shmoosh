@@ -102,3 +102,11 @@ explicit speed-mode tradeoff.
 The next meaningful speed lever is still deeper than normalization: reduce the
 rotate/bucketize path, fuse encode with attention, or remove Python/processor
 overhead around fixed 1024 shapes.
+
+## Fused Bucketize Pack Follow-Up
+
+The next encode slice is recorded in
+`docs/fused-bucketize-pack-2026-06-01.md`. It adds a K7/no-QJL Triton path that
+performs boundary search and bit packing together. This reduced K7 synthetic
+encode to `0.2343ms` and kept the 1024 image suite quality-identical, but the
+end-to-end image gain stayed modest.
