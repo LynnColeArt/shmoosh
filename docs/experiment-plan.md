@@ -92,3 +92,6 @@ Consumer GPU success criteria:
 - fits a resolution, batch size, or model variant that baseline cannot fit;
 - or reduces peak VRAM enough to keep workflows responsive with ControlNet/LoRA/hires steps;
 - or improves attention latency without visible quality loss.
+
+Follow-up acceleration ideas that should survive the next focused kernel slice
+are tracked in `docs/acceleration-backlog-2026-06-01.md`.
