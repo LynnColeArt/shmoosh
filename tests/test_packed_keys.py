@@ -19,6 +19,17 @@ def test_pack_bits_round_trips(bits: int) -> None:
     assert torch.equal(unpacked, values)
 
 
+@pytest.mark.parametrize("bits", [1, 4, 5, 6, 7, 8])
+def test_fast_pack_bits_round_trips_sdxl_width(bits: int) -> None:
+    values = torch.arange(0, 64, dtype=torch.int64).reshape(2, 4, 8)
+    values = values % (1 << bits)
+
+    packed = _pack_bits(values, bits=bits)
+    unpacked = _unpack_bits(packed, bits=bits, value_count=values.shape[-1])
+
+    assert torch.equal(unpacked, values)
+
+
 def test_encode_packed_keys_matches_reference_decode() -> None:
     generator = torch.Generator().manual_seed(0)
     keys = torch.randn(1, 2, 5, 8, generator=generator)

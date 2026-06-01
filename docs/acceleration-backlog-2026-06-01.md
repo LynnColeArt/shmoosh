@@ -91,14 +91,20 @@ no-QJL attention while keeping QJL on `BLOCK_K=16`. Synthetic 1024-token
 K7/no-QJL attention improved from `0.8348ms` to `0.6753ms`, but the image trace
 only moved packed attention from `0.0336s` to `0.0276s` while scheduled
 quantized time stayed flat at about `0.073s`.
+Fast bit packing then reduced the preferred K7/no-QJL synthetic encode time
+from `0.5865ms` to `0.3949ms`. In the image trace, `encode_pack_codes` dropped
+from `0.0147s` to `0.0100s`, and packed encode dropped from `0.0252s` to
+`0.0195s`. Whole scheduled quantized time remained noisy at about this scale.
+The three-case 1024 suite after this change cleared at `51.87 dB` minimum PSNR
+and `1.084x` mean speedup.
 
 The next slice should be:
 
 1. Keep the cached cross-attention policy as the baseline policy layer.
 2. Treat late K7/no-QJL self-attention as a separate high-fidelity policy mode,
    not a default add-on to cached cross-attention.
-3. Look for the next self-attention speed lever outside the key tile default:
-   reduce encode overhead, fuse encode+attention, or try CUDA graphs/compile for
-   fixed 1024 runs.
+3. Look for the next self-attention speed lever beyond bit packing:
+   fuse encode+attention, reduce projection/bucketize overhead, or try CUDA
+   graphs/compile for fixed 1024 runs.
 4. Revisit cross+self composition only after adding a new control surface, such
    as per-prompt policy choice or a stricter image-quality gate.

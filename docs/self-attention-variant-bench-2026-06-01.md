@@ -78,6 +78,29 @@ The K7/no-QJL synthetic attention time improved versus the earlier auto run
 (`0.8348ms` to `0.6753ms`). QJL remains on the smaller tile because wider QJL
 tiles can run into shared-memory pressure on the 4070.
 
+## Fast Bit Packing
+
+The generic `_pack_bits` path used scatter-based packing for every bit width.
+For SDXL head-dim 64 paths, the packing pattern is fixed, so K-only policies now
+use vectorized fixed-width packers for the common widths: 1, 4, 5, 6, 7, and 8
+bits. The generic scatter path remains the fallback for unusual widths or tail
+lengths.
+
+Synthetic 1024-token no-QJL rerun:
+
+```text
+captures/self-attention-variant-bench-1024-fast-pack-noqjl-v2
+```
+
+| Variant | Total ms | Encode ms | Attention ms | Relative RMSE |
+| --- | ---: | ---: | ---: | ---: |
+| K7, no QJL | 1.0278 | 0.3949 | 0.7268 | 0.023998 |
+| K6, no QJL | 0.9760 | 0.2735 | 0.7582 | 0.036941 |
+| K5, no QJL | 1.1324 | 0.3700 | 0.7206 | 0.058534 |
+
+For the preferred K7/no-QJL policy, synthetic encode time improved from
+`0.5865ms` after the tile change to `0.3949ms`.
+
 ## Image-Level Validation
 
 The synthetic result did not transfer at a 50% denoising gate:
@@ -159,6 +182,38 @@ quantized time is flat because encode-side timing moved in the other direction
 on this run. Keep the tile change because it is directionally correct for the
 streaming no-QJL kernel, but do not count it as an end-to-end image speed win
 yet.
+
+After fast bit packing, the same trace produced:
+
+```text
+captures/image-ab-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-1024-trace-fast-pack-v2-reading-nook
+```
+
+| Trace | Packed encode s | Packed attention s | Quantized total s | PSNR |
+| --- | ---: | ---: | ---: | ---: |
+| K7/no-QJL auto with no-QJL `BLOCK_K=32` | 0.0252 | 0.0276 | 0.0733 | 51.87 dB |
+| K7/no-QJL with fast bit packing | 0.0195 | 0.0301 | 0.0769 | 51.87 dB |
+
+The fast packer gives a clear real-trace encode win: `encode_pack_codes`
+dropped from `0.0147s` to `0.0100s`, and packed encode dropped from `0.0252s`
+to `0.0195s`. Whole scheduled quantized time is still noisy at this scale,
+because attention and exact-processor timing moved in the other direction on
+the follow-up trace.
+
+Three-case 1024 suite after fast bit packing:
+
+| Case | Baseline s | Shmoosh s | Speedup | PSNR |
+| --- | ---: | ---: | ---: | ---: |
+| `reading-nook-seed1-1024` | 11.7306 | 9.5769 | 1.225x | 51.87 dB |
+| `maple-leaf-seed2-1024` | 8.6921 | 8.6051 | 1.010x | 52.19 dB |
+| `misty-lake-seed3-1024` | 8.6653 | 8.6527 | 1.001x | 57.82 dB |
+
+Aggregate:
+
+- min PSNR: `51.87 dB`
+- mean PSNR: `53.96 dB`
+- max MSE: `0.00000651`
+- mean speedup: `1.084x`
 
 ## Cross + Self Composition
 

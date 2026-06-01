@@ -343,13 +343,22 @@ def _pack_bits(values: Any, *, bits: int, validate: bool = True) -> Any:
 
     value_count = int(values.shape[-1])
     byte_count = _ceil_div(value_count * bits, 8)
+    if value_count == 0:
+        return torch.zeros(
+            (*values.shape[:-1], byte_count),
+            dtype=torch.uint8,
+            device=values.device,
+        )
+
+    fast_packed = _pack_bits_fast(values, bits=bits)
+    if fast_packed is not None:
+        return fast_packed
+
     packed = torch.zeros(
         (*values.shape[:-1], byte_count),
         dtype=torch.int64,
         device=values.device,
     )
-    if value_count == 0:
-        return packed.to(dtype=torch.uint8)
 
     positions = torch.arange(value_count, device=values.device, dtype=torch.int64) * bits
     byte_indices = positions // 8
@@ -375,6 +384,76 @@ def _pack_bits(values: Any, *, bits: int, validate: bool = True) -> Any:
     packed.scatter_add_(-1, high_indices.expand_as(high_values), high_values)
 
     return packed.to(dtype=torch.uint8)
+
+
+def _pack_bits_fast(values: Any, *, bits: int) -> Any | None:
+    torch = _load_torch()
+    value_count = int(values.shape[-1])
+    if bits == 8:
+        return values.to(dtype=torch.uint8)
+
+    if bits == 1 and value_count % 8 == 0:
+        grouped = values.reshape(*values.shape[:-1], value_count // 8, 8)
+        shifts = torch.arange(8, device=values.device, dtype=torch.int64)
+        return torch.sum(grouped << shifts, dim=-1).to(dtype=torch.uint8)
+
+    if bits == 4 and value_count % 2 == 0:
+        grouped = values.reshape(*values.shape[:-1], value_count // 2, 2)
+        packed = grouped[..., 0] | (grouped[..., 1] << 4)
+        return packed.to(dtype=torch.uint8)
+
+    if bits == 5 and value_count % 8 == 0:
+        grouped = values.reshape(*values.shape[:-1], value_count // 8, 8)
+        v = [grouped[..., index] for index in range(8)]
+        packed = torch.stack(
+            (
+                v[0] | ((v[1] & 0x07) << 5),
+                (v[1] >> 3) | (v[2] << 2) | ((v[3] & 0x01) << 7),
+                (v[3] >> 1) | ((v[4] & 0x0F) << 4),
+                (v[4] >> 4) | (v[5] << 1) | ((v[6] & 0x03) << 6),
+                (v[6] >> 2) | (v[7] << 3),
+            ),
+            dim=-1,
+        )
+        return packed.reshape(*values.shape[:-1], value_count * 5 // 8).to(
+            dtype=torch.uint8
+        )
+
+    if bits == 6 and value_count % 4 == 0:
+        grouped = values.reshape(*values.shape[:-1], value_count // 4, 4)
+        v = [grouped[..., index] for index in range(4)]
+        packed = torch.stack(
+            (
+                v[0] | ((v[1] & 0x03) << 6),
+                (v[1] >> 2) | ((v[2] & 0x0F) << 4),
+                (v[2] >> 4) | (v[3] << 2),
+            ),
+            dim=-1,
+        )
+        return packed.reshape(*values.shape[:-1], value_count * 6 // 8).to(
+            dtype=torch.uint8
+        )
+
+    if bits == 7 and value_count % 8 == 0:
+        grouped = values.reshape(*values.shape[:-1], value_count // 8, 8)
+        v = [grouped[..., index] for index in range(8)]
+        packed = torch.stack(
+            (
+                v[0] | ((v[1] & 0x01) << 7),
+                (v[1] >> 1) | ((v[2] & 0x03) << 6),
+                (v[2] >> 2) | ((v[3] & 0x07) << 5),
+                (v[3] >> 3) | ((v[4] & 0x0F) << 4),
+                (v[4] >> 4) | ((v[5] & 0x1F) << 3),
+                (v[5] >> 5) | ((v[6] & 0x3F) << 2),
+                (v[6] >> 6) | (v[7] << 1),
+            ),
+            dim=-1,
+        )
+        return packed.reshape(*values.shape[:-1], value_count * 7 // 8).to(
+            dtype=torch.uint8
+        )
+
+    return None
 
 
 def _unpack_bits(packed: Any, *, bits: int, value_count: int) -> Any:

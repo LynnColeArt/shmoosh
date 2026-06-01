@@ -24,6 +24,16 @@
       "mean_shmoosh_seconds": 8.942915090980629,
       "mean_speedup": 1.078714351373168
     },
+    "validation_suite_1024_fast_pack": {
+      "output_dir": "captures/image-policy-suite-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-1024-fast-pack",
+      "case_count": 3,
+      "min_psnr_db": 51.86549067487634,
+      "mean_psnr_db": 53.95682092188594,
+      "max_mse": 0.000006508050773845753,
+      "mean_baseline_seconds": 9.69599772299019,
+      "mean_shmoosh_seconds": 8.944885317934677,
+      "mean_speedup": 1.0839711609884497
+    },
     "processor_trace": {
       "output_dir": "captures/image-ab-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-1024-trace-reading-nook",
       "prompt": "reading-nook-seed1-1024",
@@ -61,6 +71,25 @@
       "mean_scheduled_quantized_ms": 4.070002637389634,
       "mean_packed_encode_ms": 1.4017696828684872,
       "mean_packed_attention_ms": 1.5359958245729406
+    },
+    "processor_trace_fast_pack": {
+      "output_dir": "captures/image-ab-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-1024-trace-fast-pack-v2-reading-nook",
+      "prompt": "reading-nook-seed1-1024",
+      "mse": 0.000006508050773845753,
+      "mae": 0.000858705781865865,
+      "psnr_db": 51.86549067487634,
+      "baseline_seconds": 12.623973467154428,
+      "shmoosh_seconds": 10.706107951002195,
+      "speedup": 1.1791375096281091,
+      "record_count": 228,
+      "scheduled_exact_count": 42,
+      "scheduled_quantized_count": 18,
+      "packed_encode_seconds": 0.019512938102707267,
+      "packed_attention_seconds": 0.0300885031465441,
+      "scheduled_quantized_seconds": 0.07693703263066709,
+      "mean_scheduled_quantized_ms": 4.274279590592616,
+      "mean_packed_encode_ms": 1.0840521168170704,
+      "mean_packed_attention_ms": 1.6715835081413388
     },
     "note": "This is the preferred self-attention policy so far. K7/no-QJL needs late activation, but at 70% it beats the K6/QJL128 self-attention policy on both fidelity and mean runtime."
   },
