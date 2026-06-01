@@ -164,6 +164,18 @@ keys:
 
 ```text
 max_delta=0.000244140625
-fused_in_kernel_qproj_ms_per_iter=0.0913
-materialized_ms_per_iter=0.1985
+text77_public_auto_ms_per_iter=0.0873
+text77_materialized_ms_per_iter=0.1987
+```
+
+An experimental streaming fused kernel now handles larger key sets without
+materializing the score tensor, but it is not yet the production `auto` path. On
+the same 4070, a `257` key-token microcheck was correct but slower than the
+materialized Triton fallback:
+
+```text
+multi257_public_auto_ms_per_iter=0.2461
+multi257_materialized_ms_per_iter=0.2353
+multi257_direct_streaming_ms_per_iter=0.3769
+multi257_streaming_delta=0.0001220703125
 ```

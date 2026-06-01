@@ -96,19 +96,49 @@ def test_triton_packed_key_attention_matches_torch() -> None:
     triton is None or not torch.cuda.is_available(),
     reason="CUDA Triton is not available",
 )
-def test_fused_triton_attention_rejects_large_key_tile() -> None:
+def test_fused_triton_attention_matches_torch_across_key_tiles() -> None:
+    generator = torch.Generator(device="cuda").manual_seed(2)
+    query = torch.randn(
+        1, 2, 7, 16, generator=generator, device="cuda", dtype=torch.float16
+    )
+    key = torch.randn(
+        1, 2, 33, 16, generator=generator, device="cuda", dtype=torch.float16
+    )
+    value = torch.randn(
+        1, 2, 33, 16, generator=generator, device="cuda", dtype=torch.float16
+    )
+    block = encode_packed_keys(
+        key,
+        bits=4,
+        qjl_bits=16,
+        seed=5,
+        codebook_samples=2_000,
+    )
+
+    triton_output = triton_packed_key_attention_output(
+        query,
+        block,
+        value,
+        block_k=16,
+    )
+    torch_output = packed_key_attention_output(query, block, value, backend="torch")
+
+    assert triton_output.shape == torch_output.shape
+    assert torch.allclose(triton_output, torch_output, atol=5e-4, rtol=5e-4)
+
+
+@pytest.mark.skipif(
+    triton is None or not torch.cuda.is_available(),
+    reason="CUDA Triton is not available",
+)
+def test_fused_triton_attention_rejects_invalid_tile_size() -> None:
     query = torch.zeros(1, 2, 4, 16, device="cuda")
     key = torch.zeros(1, 2, 6, 16, device="cuda")
     value = torch.zeros(1, 2, 6, 16, device="cuda")
     block = encode_packed_keys(key, bits=4, qjl_bits=0, seed=5, codebook_samples=512)
 
-    with pytest.raises(ValueError, match="key_tokens"):
-        triton_packed_key_attention_output(
-            query,
-            block,
-            value,
-            block_k=4,
-        )
+    with pytest.raises(ValueError, match="tile size"):
+        triton_packed_key_attention_output(query, block, value, block_k=4)
 
 
 def _reference_output(query, key, value, *, bits, qjl_bits, seed, codebook_samples):

@@ -12,7 +12,9 @@ from shmoosh.packed_scores import (
     tl,
 )
 
-_FUSED_TRITON_KEY_TILE = 128
+_FUSED_TRITON_SINGLE_KEY_TILE = 128
+_FUSED_TRITON_STREAMING_KEY_TILE = 64
+_FUSED_TRITON_KEY_TILE = _FUSED_TRITON_SINGLE_KEY_TILE
 
 
 def packed_key_attention_output(
@@ -101,22 +103,24 @@ def triton_packed_key_attention_output(
     block_q: int = 16,
     block_k: int = _FUSED_TRITON_KEY_TILE,
 ) -> Any:
-    """Fused Triton packed-K attention for one text-key tile.
+    """Fused Triton packed-K attention.
 
     This path never materializes the full `(batch, heads, query_tokens,
-    key_tokens)` score tensor. It is intentionally limited to the common
-    diffusion cross-attention shape where all text keys fit in one key tile.
-    Larger key sets continue through the materialized Triton score fallback.
+    key_tokens)` score tensor. It uses a fast single-tile kernel for text-key
+    attention and a streaming softmax kernel for larger key sets.
     """
 
     torch = _load_torch()
-    if triton is None or _packed_key_attention_output_kernel is None:
+    if (
+        triton is None
+        or _packed_key_attention_output_kernel is None
+        or _packed_key_attention_streaming_kernel is None
+    ):
         raise RuntimeError("triton is required for fused packed-key attention")
-    if not _can_use_fused_triton_attention(query, block, value, block_k=block_k):
+    if not _can_launch_fused_triton_attention(query, block, value, block_k=block_k):
         raise ValueError(
             "fused Triton packed-key attention requires CUDA tensors, "
-            "fused-compatible dimensions, and "
-            f"key_tokens <= {block_k}"
+            "fused-compatible dimensions, and a valid tile size"
         )
 
     _validate_query_value_block(query, value, block)
@@ -166,7 +170,12 @@ def triton_packed_key_attention_output(
         dtype=torch.float32,
     )
     grid = (triton.cdiv(q_tokens, block_q), head_like)
-    _packed_key_attention_output_kernel[grid](
+    key_tile = block_k
+    kernel = _packed_key_attention_output_kernel
+    if key_tokens > block_k:
+        key_tile = min(block_k, _FUSED_TRITON_STREAMING_KEY_TILE)
+        kernel = _packed_key_attention_streaming_kernel
+    kernel[grid](
         query_input,
         rotation,
         qjl_matrix,
@@ -185,7 +194,7 @@ def triton_packed_key_attention_output(
         CODE_BYTES=block.code_bytes_per_vector,
         SIGN_BYTES=block.qjl_sign_bytes_per_vector if effective_qjl_bits else 1,
         BLOCK_Q=block_q,
-        BLOCK_K=block_k,
+        BLOCK_K=key_tile,
         INV_SQRT_D=1.0 / sqrt(head_dim),
         ATTENTION_SCALE=1.0 / sqrt(head_dim),
         QJL_SCALE=(
@@ -288,8 +297,22 @@ def _can_use_fused_triton_attention(
     block_k: int = _FUSED_TRITON_KEY_TILE,
 ) -> bool:
     return (
+        _can_launch_fused_triton_attention(query, block, value, block_k=block_k)
+        and int(block.shape[2]) <= _FUSED_TRITON_SINGLE_KEY_TILE
+    )
+
+
+def _can_launch_fused_triton_attention(
+    query: Any,
+    block: PackedKeyBlock,
+    value: Any,
+    *,
+    block_k: int = _FUSED_TRITON_KEY_TILE,
+) -> bool:
+    return (
         triton is not None
         and _packed_key_attention_output_kernel is not None
+        and _packed_key_attention_streaming_kernel is not None
         and getattr(query, "is_cuda", False)
         and getattr(value, "is_cuda", False)
         and getattr(block.codes, "is_cuda", False)
@@ -298,7 +321,8 @@ def _can_use_fused_triton_attention(
         and block.head_dim >= 16
         and _is_power_of_two(block.head_dim)
         and _supports_fused_qjl_width(block.qjl_bits)
-        and int(block.shape[2]) <= block_k
+        and block_k >= 16
+        and _is_power_of_two(block_k)
     )
 
 
@@ -450,5 +474,162 @@ if triton is not None and tl is not None:
             mask=q_mask[:, None],
         )
 
+    @triton.jit(do_not_specialize=["q_tokens", "key_tokens"])
+    def _packed_key_attention_streaming_kernel(
+        query_ptr,
+        rotation_ptr,
+        qjl_matrix_ptr,
+        codes_ptr,
+        norms_ptr,
+        residual_signs_ptr,
+        residual_norms_ptr,
+        codebook_ptr,
+        value_ptr,
+        out_ptr,
+        q_tokens,
+        key_tokens,
+        HEAD_DIM: tl.constexpr,
+        BITS: tl.constexpr,
+        QJL_BITS: tl.constexpr,
+        CODE_BYTES: tl.constexpr,
+        SIGN_BYTES: tl.constexpr,
+        BLOCK_Q: tl.constexpr,
+        BLOCK_K: tl.constexpr,
+        INV_SQRT_D: tl.constexpr,
+        ATTENTION_SCALE: tl.constexpr,
+        QJL_SCALE: tl.constexpr,
+    ):
+        q_offsets = tl.program_id(0) * BLOCK_Q + tl.arange(0, BLOCK_Q)
+        head_like = tl.program_id(1)
+        k_offsets = tl.arange(0, BLOCK_K)
+        dim_offsets = tl.arange(0, HEAD_DIM)
+        q_mask = q_offsets < q_tokens
+        k_mask = k_offsets < key_tokens
+        query_values = tl.load(
+            query_ptr
+            + head_like * q_tokens * HEAD_DIM
+            + q_offsets[:, None] * HEAD_DIM
+            + dim_offsets[None, :],
+            mask=q_mask[:, None],
+            other=0.0,
+        ).to(tl.float32)
+
+        rotation_t = tl.load(
+            rotation_ptr
+            + dim_offsets[None, :] * HEAD_DIM
+            + dim_offsets[:, None]
+        )
+        q_rot = tl.dot(query_values, rotation_t, input_precision="ieee")
+
+        if QJL_BITS > 0:
+            qjl_offsets = tl.arange(0, QJL_BITS)
+            qjl_t = tl.load(
+                qjl_matrix_ptr
+                + qjl_offsets[None, :] * HEAD_DIM
+                + dim_offsets[:, None]
+            )
+            q_proj = tl.dot(query_values, qjl_t, input_precision="ieee")
+        else:
+            q_proj = tl.zeros((BLOCK_Q, 1), dtype=tl.float32)
+
+        m_i = tl.full((BLOCK_Q, 1), -float("inf"), dtype=tl.float32)
+        l_i = tl.zeros((BLOCK_Q, 1), dtype=tl.float32)
+        acc = tl.zeros((BLOCK_Q, HEAD_DIM), dtype=tl.float32)
+
+        for key_start in tl.range(0, key_tokens, BLOCK_K):
+            tile_k_offsets = key_start + k_offsets
+            tile_k_mask = tile_k_offsets < key_tokens
+            bit_position = dim_offsets[:, None] * BITS
+            byte_index = bit_position // 8
+            bit_offset = bit_position % 8
+            code_byte = tl.load(
+                codes_ptr
+                + head_like * key_tokens * CODE_BYTES
+                + tile_k_offsets[None, :] * CODE_BYTES
+                + byte_index,
+                mask=tile_k_mask[None, :],
+                other=0,
+            ).to(tl.uint32)
+            next_byte = tl.load(
+                codes_ptr
+                + head_like * key_tokens * CODE_BYTES
+                + tile_k_offsets[None, :] * CODE_BYTES
+                + byte_index
+                + 1,
+                mask=tile_k_mask[None, :] & ((byte_index + 1) < CODE_BYTES),
+                other=0,
+            ).to(tl.uint32)
+            combined = code_byte | (next_byte << 8)
+            code = (combined >> bit_offset) & ((1 << BITS) - 1)
+            code_values = tl.load(
+                codebook_ptr + code,
+                mask=tile_k_mask[None, :],
+                other=0.0,
+            )
+            scores = tl.dot(q_rot, code_values, input_precision="ieee")
+
+            key_norms = tl.load(
+                norms_ptr + head_like * key_tokens + tile_k_offsets,
+                mask=tile_k_mask,
+                other=0.0,
+            )
+            scores *= (key_norms * INV_SQRT_D)[None, :]
+
+            if QJL_BITS > 0:
+                sign_byte_index = qjl_offsets[:, None] // 8
+                sign_bit_offset = qjl_offsets[:, None] % 8
+                sign_byte = tl.load(
+                    residual_signs_ptr
+                    + head_like * key_tokens * SIGN_BYTES
+                    + tile_k_offsets[None, :] * SIGN_BYTES
+                    + sign_byte_index,
+                    mask=tile_k_mask[None, :],
+                    other=0,
+                ).to(tl.uint32)
+                sign_bit = (sign_byte >> sign_bit_offset) & 1
+                signs = tl.where(sign_bit == 1, 1.0, -1.0)
+                correction = tl.dot(q_proj, signs, input_precision="ieee")
+                residual_norm_values = tl.load(
+                    residual_norms_ptr + head_like * key_tokens + tile_k_offsets,
+                    mask=tile_k_mask,
+                    other=0.0,
+                )
+                scores += correction * (residual_norm_values * QJL_SCALE)[None, :]
+
+            logits = tl.where(
+                q_mask[:, None] & tile_k_mask[None, :],
+                scores * ATTENTION_SCALE,
+                -float("inf"),
+            )
+            m_tile = tl.max(logits, axis=1, keep_dims=True)
+            m_new = tl.maximum(m_i, m_tile)
+            m_new = tl.where(q_mask[:, None], m_new, 0.0)
+            alpha = tl.exp(m_i - m_new)
+            weights = tl.exp(logits - m_new)
+            l_i = l_i * alpha + tl.sum(weights, axis=1, keep_dims=True)
+
+            values = tl.load(
+                value_ptr
+                + head_like * key_tokens * HEAD_DIM
+                + tile_k_offsets[:, None] * HEAD_DIM
+                + dim_offsets[None, :],
+                mask=tile_k_mask[:, None],
+                other=0.0,
+            ).to(tl.float32)
+            acc = acc * alpha + tl.dot(weights, values, input_precision="ieee")
+
+            m_i = m_new
+
+        output = acc / tl.where(l_i > 0.0, l_i, 1.0)
+        tl.store(
+            out_ptr
+            + head_like * q_tokens * HEAD_DIM
+            + q_offsets[:, None] * HEAD_DIM
+            + dim_offsets[None, :],
+            output,
+            mask=q_mask[:, None],
+        )
+
 else:  # pragma: no cover
     _packed_key_attention_output_kernel = None
+    _packed_key_attention_streaming_kernel = None

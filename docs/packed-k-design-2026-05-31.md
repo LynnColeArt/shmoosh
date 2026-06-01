@@ -252,6 +252,12 @@ fused-compatible dimensions, avoiding separate `q_rot` and `q_proj` tensors.
 Larger key sets and unsupported dimensions keep using the materialized Triton
 score fallback.
 
+There is also an experimental streaming fused kernel for larger key sets. It
+uses a stable softmax accumulator across `64`-token key tiles and avoids the
+score tensor, but current 4070 microchecks show it is slower than the
+materialized fallback. It should remain a direct kernel-development path until
+tile shape, register pressure, and QJL correction cost are tuned.
+
 ## Kernel Direction
 
 The current production path is a staged Torch/Triton design:
@@ -271,9 +277,9 @@ residual correction. A temporary reconstruct-then-attend kernel is useful for
 debugging, but it should not be treated as the production target because it
 reintroduces the fp16 K bandwidth.
 
-The next kernel step is broadening the fused path beyond the single `128` token
-tile, which is needed before self-attention key sets can avoid the materialized
-score fallback.
+The next kernel step is making the streaming fused path faster than the
+materialized fallback for larger key sets, which is needed before self-attention
+can use it by default.
 
 ## Acceptance
 
