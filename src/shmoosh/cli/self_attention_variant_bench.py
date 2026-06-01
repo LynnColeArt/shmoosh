@@ -15,6 +15,11 @@ from shmoosh.packed_attention import (
 from shmoosh.packed_keys import encode_packed_keys
 from shmoosh.packed_scores import score_resources_from_codec
 from shmoosh.quantization import ShmooshCodec
+from shmoosh.rotated_attention import (
+    rotated_key_attention_output,
+    triton_rotated_key_attention_output,
+)
+from shmoosh.rotated_keys import encode_rotated_keys
 
 
 def main() -> None:
@@ -45,9 +50,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--code-format",
-        choices=["packed", "byte"],
+        choices=["packed", "byte", "rotated"],
         default="packed",
-        help="Runtime K-code layout to benchmark.",
+        help="Runtime K representation to benchmark.",
     )
     parser.add_argument(
         "--block-k",
@@ -198,6 +203,12 @@ def _run_variant(
     resources = score_resources_from_codec(codec, device=device)
 
     def encode_once():
+        if args.code_format == "rotated":
+            return encode_rotated_keys(
+                key,
+                resources=resources,
+                seed=args.seed,
+            )
         return encode_packed_keys(
             key,
             bits=bits,
@@ -278,12 +289,28 @@ def _attention_call(
             kwargs["block_q"] = args.block_q
         if args.block_k is not None:
             kwargs["block_k"] = args.block_k
+        if args.code_format == "rotated":
+            return lambda: triton_rotated_key_attention_output(
+                query,
+                block,
+                value,
+                resources=resources,
+                **kwargs,
+            )
         return lambda: triton_packed_key_attention_output(
             query,
             block,
             value,
             resources=resources,
             **kwargs,
+        )
+    if args.code_format == "rotated":
+        return lambda: rotated_key_attention_output(
+            query,
+            block,
+            value,
+            resources=resources,
+            backend=args.backend,
         )
     return lambda: packed_key_attention_output(
         query,

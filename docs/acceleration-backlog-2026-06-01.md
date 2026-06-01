@@ -144,6 +144,15 @@ CUDA unit test, and kept the 1024 image suite quality-identical. Mean packed
 encode moved from `0.8821ms` to `0.8342ms`; mean rotate/bucketize moved from
 `0.5178ms` to `0.4722ms`. This is a real kernel simplification, still not a
 visible whole-pipeline UX win by itself.
+The direct rotated-K probe is recorded in
+`docs/direct-rotated-k-probe-2026-06-01.md`. It added an opt-in synthetic
+`code_format="rotated"` path that stores normalized rotated K plus exact norms,
+then consumes that representation in a streaming Triton attention kernel.
+Encode improved versus packed K7/no-QJL (`0.0949ms` versus `0.1777ms`), and
+quality was near-exact (`0.000310` relative RMSE), but attention slowed sharply
+(`1.3738ms` versus `0.6771ms`) because the representation reads `132`
+bytes/vector instead of packed K7's `60`. Keep this as a diagnostic path; do
+not promote direct rotated K as the 1024 self-attention runtime format.
 
 The next slice should be:
 
@@ -151,8 +160,8 @@ The next slice should be:
 2. Treat late K7/no-QJL self-attention as a separate high-fidelity policy mode,
    not a default add-on to cached cross-attention.
 3. Look for the next self-attention speed lever beyond bit packing and
-   normalize/bucketize/rotation cleanup: fuse encode+attention, remove the
-   encode step from the attention representation, or try CUDA graphs/compile
-   for fixed 1024 runs.
+   normalize/bucketize/rotation cleanup: fuse encode+attention while preserving
+   compact K reads, reduce decode work inside packed attention, or try CUDA
+   graphs/compile for fixed 1024 runs.
 4. Revisit cross+self composition only after adding a new control surface, such
    as per-prompt policy choice or a stricter image-quality gate.
