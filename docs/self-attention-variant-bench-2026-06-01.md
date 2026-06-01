@@ -90,6 +90,38 @@ This is the best self-attention-only policy so far. It beats the K6/QJL128 50%
 self-attention policy on quality and mean runtime, but only after the activation
 window moves from 50% to 70%.
 
+## Processor Trace
+
+The 70% K7/no-QJL self-attention run was traced on the reading-nook case:
+
+```text
+captures/image-ab-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-1024-trace-reading-nook
+```
+
+Trace summary:
+
+- baseline: `11.4399s`
+- Shmoosh: `9.6055s`
+- speedup: `1.191x`
+- PSNR: `52.07 dB`
+- scheduled exact calls: `42`
+- scheduled quantized calls: `18`
+
+The call counts match the intended 70% gate: three modules stay exact for the
+first 14 of 20 denoising steps, then run quantized for the last 6 steps.
+
+Compared with the older K6/QJL128 50% self-attention trace:
+
+| Trace | Quantized calls | Packed encode s | Packed attention s | Quantized total s | Mean quantized ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| K6/QJL128, exact first 50% | 30 | 0.0750 | 0.1329 | 0.2348 | 7.8270 |
+| K7/no-QJL, exact first 70% | 18 | 0.0202 | 0.0336 | 0.0732 | 4.0640 |
+
+Trace readout: the quality win is not just coming from hiding the policy later.
+The no-QJL path is materially lighter per quantized call too. The residual
+projection and residual-sign packing phases disappear, and packed attention
+drops from `4.4311ms` per call to `1.8646ms` per call.
+
 ## Cross + Self Composition
 
 The K7/no-QJL 70% self-attention policy was also composed with the cached
@@ -130,10 +162,8 @@ Two things are now clearer:
 
 Next slice:
 
-1. Trace the K7/no-QJL 70% self-attention image run to confirm the expected
-   encode/attention split in the real processor.
-2. Test a cross+self composition with cross attention held at the current
+1. Test a cross+self composition with cross attention held at the current
    cached policy but self-attention restricted to only the strongest one or two
    K7/no-QJL modules.
-3. Consider a dedicated no-QJL streaming kernel tile default if repeated image
+2. Consider a dedicated no-QJL streaming kernel tile default if repeated image
    traces keep favoring `block_k=32`.

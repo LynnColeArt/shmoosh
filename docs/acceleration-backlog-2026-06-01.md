@@ -71,13 +71,16 @@ self-attention-only result so far: `52.07 dB` minimum PSNR and `1.079x` mean
 runtime across the three-case 1024 suite. Composing that policy with cached
 cross-attention improved speed slightly versus the K6/QJL128 composition but
 lowered quality, so it remains a tradeoff policy rather than a default.
+The K7/no-QJL 70% processor trace confirmed the policy shape: 42 exact calls
+and 18 quantized calls, with packed encode at `0.0202s`, packed attention at
+`0.0336s`, and scheduled quantized time at `0.0732s`. Compared with the older
+K6/QJL128 self-attention trace, mean quantized call time fell from `7.8270ms`
+to `4.0640ms`.
 
 The next slice should be:
 
 1. Keep the cached cross-attention policy as the baseline policy layer.
-2. Trace the K7/no-QJL 70% self-attention image run to confirm the real
-   processor encode/attention split.
-3. Test cross+self composition with self-attention restricted to only the
+2. Test cross+self composition with self-attention restricted to only the
    strongest one or two K7/no-QJL modules.
-4. Consider a dedicated no-QJL streaming kernel tile default if repeated image
+3. Consider a dedicated no-QJL streaming kernel tile default if repeated image
    traces keep favoring `block_k=32`.
