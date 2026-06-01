@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "description": "Exploratory exact-first 50% K7/no-QJL Shmoosh policy for the first self-attention transformer block in each up_blocks.0 attention group of the local Underpaint Juggernaut SDXL checkpoint.",
+  "source": "docs/self-attention-variant-bench-2026-06-01.md",
+  "validation": {
+    "status": "image_smoke_failed_quality",
+    "candidate_reason": "Synthetic 1024-token self-attention microbench showed K7/no-QJL was faster and lower-error than K6/QJL128.",
+    "image_smoke": {
+      "output_dir": "captures/image-ab-juggernaut-up0-self-attn1-firstblocks-gated50pct-k7-noqjl-1024-reading-nook",
+      "prompt": "reading-nook-seed1-1024",
+      "mse": 0.000014815682334301528,
+      "mae": 0.001451233052648604,
+      "psnr_db": 48.29278342348084,
+      "baseline_seconds": 11.787603016011417,
+      "shmoosh_seconds": 9.67137014796026
+    },
+    "note": "The synthetic attention result did not transfer at a 50% gate. Keep self-attention exact longer; prefer the 70% K7/no-QJL policy."
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "shmoosh_policy": {
+    "bits": 7,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 0,
+    "codebook_samples": 80000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false,
+    "attention_backend": "packed",
+    "packed_backend": "auto"
+  },
+  "quantized_modules": [
+    {
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.5
+    },
+    {
+      "name": "up_blocks.0.attentions.1.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.5
+    },
+    {
+      "name": "up_blocks.0.attentions.2.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.5
+    }
+  ],
+  "exact_modules": []
+}

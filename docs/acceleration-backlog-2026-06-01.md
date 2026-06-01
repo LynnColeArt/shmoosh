@@ -63,9 +63,21 @@ the better exploratory policy, clearing the three-case 1024 suite with
 `49.17 dB` minimum PSNR and a `1.048x` mean runtime signal, but it is still only
 marginally better than the cached cross-attention policy alone.
 
+The QJL/no-QJL self-attention variant slice is recorded in
+`docs/self-attention-variant-bench-2026-06-01.md`. Synthetic 1024-token
+self-attention favored `K7/no-QJL`, but the 50% image gate failed. Moving the
+same K7/no-QJL policy to a 70% self-attention gate produced the best
+self-attention-only result so far: `52.07 dB` minimum PSNR and `1.079x` mean
+runtime across the three-case 1024 suite. Composing that policy with cached
+cross-attention improved speed slightly versus the K6/QJL128 composition but
+lowered quality, so it remains a tradeoff policy rather than a default.
+
 The next slice should be:
 
 1. Keep the cached cross-attention policy as the baseline policy layer.
-2. Profile the self-attention streaming kernel directly.
-3. Compare QJL64 and no-QJL K6/K7 variants for the self-attention modules.
-4. Re-run the 70% composition after any kernel or policy-cost improvement.
+2. Trace the K7/no-QJL 70% self-attention image run to confirm the real
+   processor encode/attention split.
+3. Test cross+self composition with self-attention restricted to only the
+   strongest one or two K7/no-QJL modules.
+4. Consider a dedicated no-QJL streaming kernel tile default if repeated image
+   traces keep favoring `block_k=32`.
