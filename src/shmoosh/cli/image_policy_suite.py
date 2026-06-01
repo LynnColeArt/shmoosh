@@ -250,6 +250,7 @@ def _run_case(
         "max_abs": image_metrics["max_abs"],
         "baseline_seconds": baseline_stats["seconds"],
         "shmoosh_seconds": shmoosh_stats["seconds"],
+        "speedup": _ratio(baseline_stats["seconds"], shmoosh_stats["seconds"]),
         "baseline_image": str(baseline_path),
         "shmoosh_image": str(shmoosh_path),
         "diff_heatmap": str(diff_path),
@@ -366,6 +367,8 @@ def _case_policy_args(
 
 
 def _aggregate_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    mean_baseline = _mean(rows, "baseline_seconds")
+    mean_shmoosh = _mean(rows, "shmoosh_seconds")
     return {
         "cases": len(rows),
         "mean_mse": _mean(rows, "mse"),
@@ -373,11 +376,20 @@ def _aggregate_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "mean_psnr_db": _mean(rows, "psnr_db"),
         "min_psnr_db": min(float(row["psnr_db"]) for row in rows),
         "max_psnr_db": max(float(row["psnr_db"]) for row in rows),
+        "mean_baseline_seconds": mean_baseline,
+        "mean_shmoosh_seconds": mean_shmoosh,
+        "mean_speedup": _ratio(mean_baseline, mean_shmoosh),
     }
 
 
 def _mean(rows: list[dict[str, Any]], key: str) -> float:
     return sum(float(row[key]) for row in rows) / len(rows)
+
+
+def _ratio(numerator: float, denominator: float) -> float | None:
+    if denominator == 0:
+        return None
+    return numerator / denominator
 
 
 def _write_summary(
@@ -402,6 +414,7 @@ def _write_summary(
         "max_abs",
         "baseline_seconds",
         "shmoosh_seconds",
+        "speedup",
         "processor_timing_seconds",
         "processor_timing_records",
         "shmoosh_cuda_max_memory_allocated_mib",
@@ -431,10 +444,13 @@ def _safe_case_id(case_id: str) -> str:
 def _print_summary(rows: list[dict[str, Any]]) -> None:
     print("policy suite complete")
     for row in sorted(rows, key=lambda item: float(item["psnr_db"])):
+        speedup = row.get("speedup")
+        speedup_text = "n/a" if speedup is None else f"{float(speedup):.3f}x"
         print(
             f"{row['case_id']} seed={row['seed']} "
             f"mse={row['mse']:.8f} mae={row['mae']:.8f} "
-            f"psnr={row['psnr_db']:.2f}dB"
+            f"psnr={row['psnr_db']:.2f}dB "
+            f"speedup={speedup_text}"
         )
 
 

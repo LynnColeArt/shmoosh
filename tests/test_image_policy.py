@@ -8,7 +8,7 @@ from shmoosh.cli.image_ab_smoke import (
     _select_policy_module_entries,
     _select_policy_modules,
 )
-from shmoosh.cli.image_policy_suite import _cases_from_payload
+from shmoosh.cli.image_policy_suite import _aggregate_rows, _cases_from_payload
 from shmoosh.diffusers_processor import DenoisingStepState, ScheduledShmooshAttnProcessor
 
 
@@ -260,3 +260,28 @@ def test_policy_suite_cases_use_file_defaults() -> None:
     assert case.height == 512
     assert case.width == 512
     assert case.guidance_scale == 5.0
+
+
+def test_policy_suite_aggregate_reports_timing_speedup() -> None:
+    rows = [
+        {
+            "mse": 0.1,
+            "mae": 0.2,
+            "psnr_db": 40.0,
+            "baseline_seconds": 10.0,
+            "shmoosh_seconds": 5.0,
+        },
+        {
+            "mse": 0.3,
+            "mae": 0.4,
+            "psnr_db": 44.0,
+            "baseline_seconds": 8.0,
+            "shmoosh_seconds": 7.0,
+        },
+    ]
+
+    aggregate = _aggregate_rows(rows)
+
+    assert aggregate["mean_baseline_seconds"] == 9.0
+    assert aggregate["mean_shmoosh_seconds"] == 6.0
+    assert aggregate["mean_speedup"] == 1.5
