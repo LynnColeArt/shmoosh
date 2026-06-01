@@ -123,20 +123,61 @@ The composed policy uses global module indices 48, 68, and 88 when selected
 from the full U-Net attention list. Each module stays exact for the first 50%
 of denoising, resolving to step 10 in a 20-step run.
 
+## Three-Case 1024 Suite
+
+The exploratory self-attention policy then ran against the native-resolution
+validation suite:
+
+```bash
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+uv run shmoosh-image-policy-suite \
+  --single-file /home/lynn/.underpaint/models/checkpoints/juggernaut-x-v10/Juggernaut-X-RunDiffusion-NSFW.safetensors \
+  --config stabilityai/stable-diffusion-xl-base-1.0 \
+  --pipeline-class sdxl \
+  --component unet \
+  --policy-file configs/underpaint-juggernaut-sdxl-up0-self-attn1-firstblocks-gated50pct-k6-qjl128-policy.json \
+  --case-file configs/underpaint-juggernaut-validation-1024-cases.json \
+  --output-dir captures/image-policy-suite-juggernaut-up0-self-attn1-firstblocks-gated50pct-k6-1024 \
+  --dtype fp16 \
+  --device cuda \
+  --model-cpu-offload \
+  --local-files-only \
+  --bits 6 \
+  --qjl-bits 128 \
+  --attention-backend packed \
+  --packed-backend auto
+```
+
+| Case | Baseline s | Shmoosh s | Speedup | PSNR |
+| --- | ---: | ---: | ---: | ---: |
+| `reading-nook-seed1-1024` | 12.1679 | 10.2707 | 1.185x | 50.57 dB |
+| `maple-leaf-seed2-1024` | 8.4584 | 8.5038 | 0.995x | 49.62 dB |
+| `misty-lake-seed3-1024` | 8.4089 | 8.7074 | 0.966x | 57.67 dB |
+
+Suite aggregate:
+
+- min PSNR: `49.62 dB`
+- mean PSNR: `52.62 dB`
+- max MSE: `0.00001091`
+- mean baseline: `9.6784s`
+- mean Shmoosh: `9.1606s`
+- mean speedup: `1.057x`
+
 ## Readout
 
-This is a real positive signal, but still a small-scope one:
+This is a real positive signal, but still not the full runtime answer:
 
 - late-step K6/QJL128 self-attention can pass native 1024 fidelity on the first
   reading-nook prompt;
 - composition across the first self-attention block in three `up_blocks.0`
   attention groups also passes the first prompt;
-- this policy is not accepted yet, because it has not cleared the three-case
-  1024 suite and has not been mixed with the cached cross-attention policy.
+- the three-case 1024 suite cleared fidelity with a small mean runtime win;
+- the policy has not yet been mixed with the cached cross-attention policy.
 
 Next slice:
 
-1. Run the three-case 1024 suite for the self-attention policy.
-2. Trace the composed self-attention run to split encode cost from fused
+1. Trace the composed self-attention run to split encode cost from fused
    attention cost.
-3. If it clears, composition-test it with the cached cross-attention policy.
+2. Composition-test it with the cached cross-attention policy.
+3. If the combined policy clears, run the three-case 1024 suite on the combined
+   denoising policy.

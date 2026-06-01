@@ -3,7 +3,7 @@
   "description": "Exploratory exact-first 50% K6 Shmoosh policy for the first self-attention transformer block in each up_blocks.0 attention group of the local Underpaint Juggernaut SDXL checkpoint.",
   "source": "docs/self-attention-sweep-2026-06-01.md",
   "validation": {
-    "status": "composition_smoke",
+    "status": "three_case_suite_passed",
     "quantize_start_percent": 0.5,
     "tested_resolution": "1024x1024",
     "tested_horizon_steps": 20,
@@ -24,7 +24,17 @@
       "baseline_seconds": 11.789910004939884,
       "shmoosh_seconds": 9.910528628155589
     },
-    "note": "Single-module probes passed on one 1024 prompt and the three-module composition smoke also passed. Validate across the three-case 1024 suite before mixing with cross-attention cache policy."
+    "validation_suite_1024": {
+      "output_dir": "captures/image-policy-suite-juggernaut-up0-self-attn1-firstblocks-gated50pct-k6-1024",
+      "case_count": 3,
+      "min_psnr_db": 49.62070156043707,
+      "mean_psnr_db": 52.61925298351988,
+      "max_mse": 0.000010912640391325112,
+      "mean_baseline_seconds": 9.678393422625959,
+      "mean_shmoosh_seconds": 9.16063933679834,
+      "mean_speedup": 1.0565194269517628
+    },
+    "note": "Single-module probes, the three-module composition smoke, and the three-case 1024 suite passed. Trace before mixing with the cached cross-attention policy so encode and fused-attention costs are visible."
   },
   "default": {
     "quantize_keys": false,

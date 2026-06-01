@@ -50,13 +50,13 @@ lever. The self-attention smoke is recorded in
 `docs/self-attention-sweep-2026-06-01.md`: three K6/QJL128 `up_blocks.0.attn1`
 modules passed single-module 1024 probes with exact-first 50% activation, and
 their three-module composition passed the reading-nook 1024 prompt at
-`50.57 dB` PSNR.
+`50.57 dB` PSNR. The same self-attention policy also cleared the three-case
+1024 suite with `49.62 dB` minimum PSNR and a `1.057x` mean runtime signal.
 
 The next slice should be:
 
-1. Run the three-case 1024 suite for the exploratory self-attention policy.
-2. Trace the composed self-attention policy to split encode time from fused
+1. Trace the composed self-attention policy to split encode time from fused
    attention time.
-3. Keep the cached cross-attention policy as the baseline policy layer.
-4. Composition-test any accepted self-attention candidate with the cached cross-attention
+2. Keep the cached cross-attention policy as the baseline policy layer.
+3. Composition-test the accepted self-attention candidate with the cached cross-attention
    policy before treating it as a real runtime win.
