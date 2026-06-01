@@ -6,6 +6,7 @@ import pytest
 from shmoosh.packed_attention import (
     encode_and_attention_output,
     packed_key_attention_output,
+    torch_packed_key_attention_output,
     triton_packed_key_attention_output,
 )
 from shmoosh.packed_keys import encode_packed_keys
@@ -125,6 +126,44 @@ def test_fused_triton_attention_matches_torch_across_key_tiles() -> None:
 
     assert triton_output.shape == torch_output.shape
     assert torch.allclose(triton_output, torch_output, atol=5e-4, rtol=5e-4)
+
+
+@pytest.mark.skipif(
+    triton is None or not torch.cuda.is_available(),
+    reason="CUDA Triton is not available",
+)
+def test_auto_uses_fused_triton_attention_across_key_tiles(monkeypatch) -> None:
+    generator = torch.Generator(device="cuda").manual_seed(4)
+    query = torch.randn(
+        1, 2, 7, 16, generator=generator, device="cuda", dtype=torch.float16
+    )
+    key = torch.randn(
+        1, 2, 129, 16, generator=generator, device="cuda", dtype=torch.float16
+    )
+    value = torch.randn(
+        1, 2, 129, 16, generator=generator, device="cuda", dtype=torch.float16
+    )
+    block = encode_packed_keys(
+        key,
+        bits=4,
+        qjl_bits=16,
+        seed=5,
+        codebook_samples=2_000,
+    )
+    reference = torch_packed_key_attention_output(query, block, value)
+
+    def _fail_materialized(*_args, **_kwargs):
+        raise AssertionError("materialized fallback should not be used")
+
+    monkeypatch.setattr(
+        "shmoosh.packed_attention.torch_packed_key_attention_output",
+        _fail_materialized,
+    )
+
+    auto_output = packed_key_attention_output(query, block, value, backend="auto")
+
+    assert auto_output.shape == reference.shape
+    assert torch.allclose(auto_output, reference, atol=5e-4, rtol=5e-4)
 
 
 @pytest.mark.skipif(

@@ -13,7 +13,9 @@ from shmoosh.packed_scores import (
 )
 
 _FUSED_TRITON_SINGLE_KEY_TILE = 128
-_FUSED_TRITON_STREAMING_KEY_TILE = 64
+_FUSED_TRITON_QUERY_TILE = 16
+_FUSED_TRITON_STREAMING_QUERY_TILE = 32
+_FUSED_TRITON_STREAMING_KEY_TILE = 16
 _FUSED_TRITON_KEY_TILE = _FUSED_TRITON_SINGLE_KEY_TILE
 
 
@@ -100,7 +102,7 @@ def triton_packed_key_attention_output(
     *,
     resources: PackedScoreResources | None = None,
     output_dtype: Any | None = None,
-    block_q: int = 16,
+    block_q: int = _FUSED_TRITON_QUERY_TILE,
     block_k: int = _FUSED_TRITON_KEY_TILE,
 ) -> Any:
     """Fused Triton packed-K attention.
@@ -169,12 +171,19 @@ def triton_packed_key_attention_output(
         device=query.device,
         dtype=torch.float32,
     )
-    grid = (triton.cdiv(q_tokens, block_q), head_like)
+    query_tile = block_q
     key_tile = block_k
     kernel = _packed_key_attention_output_kernel
     if key_tokens > block_k:
-        key_tile = min(block_k, _FUSED_TRITON_STREAMING_KEY_TILE)
+        if block_q == _FUSED_TRITON_QUERY_TILE:
+            query_tile = _FUSED_TRITON_STREAMING_QUERY_TILE
+        key_tile = (
+            _FUSED_TRITON_STREAMING_KEY_TILE
+            if block_k == _FUSED_TRITON_KEY_TILE
+            else block_k
+        )
         kernel = _packed_key_attention_streaming_kernel
+    grid = (triton.cdiv(q_tokens, query_tile), head_like)
     kernel[grid](
         query_input,
         rotation,
@@ -193,7 +202,7 @@ def triton_packed_key_attention_output(
         QJL_BITS=effective_qjl_bits,
         CODE_BYTES=block.code_bytes_per_vector,
         SIGN_BYTES=block.qjl_sign_bytes_per_vector if effective_qjl_bits else 1,
-        BLOCK_Q=block_q,
+        BLOCK_Q=query_tile,
         BLOCK_K=key_tile,
         INV_SQRT_D=1.0 / sqrt(head_dim),
         ATTENTION_SCALE=1.0 / sqrt(head_dim),
@@ -296,10 +305,7 @@ def _can_use_fused_triton_attention(
     *,
     block_k: int = _FUSED_TRITON_KEY_TILE,
 ) -> bool:
-    return (
-        _can_launch_fused_triton_attention(query, block, value, block_k=block_k)
-        and int(block.shape[2]) <= _FUSED_TRITON_SINGLE_KEY_TILE
-    )
+    return _can_launch_fused_triton_attention(query, block, value, block_k=block_k)
 
 
 def _can_launch_fused_triton_attention(

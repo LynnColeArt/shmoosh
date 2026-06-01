@@ -145,18 +145,18 @@ This is still not an end-to-end speed claim.
 
 ## Fused Output Slice
 
-The next slice introduced a fused Triton packed-K attention output path for
-text-key tiles up to `128` tokens. The fused path computes packed scores,
-softmax weights, and exact-V output accumulation inside one Triton kernel, so it
-does not materialize the full `(batch, heads, query_tokens, key_tokens)` score
-tensor. Larger key sets, CPU runs, and explicit `torch` backend runs continue
-through the materialized-score fallback.
+The next slice introduced a fused Triton packed-K attention output path. The
+fused path computes packed scores, softmax weights, and exact-V output
+accumulation inside Triton kernels, so it does not materialize the full
+`(batch, heads, query_tokens, key_tokens)` score tensor. CUDA `auto` now uses a
+fast single-tile kernel for text-key attention and a streaming softmax kernel
+for larger key sets.
 
 The follow-up kernel slice folded query rotation and QJL projection into that
 same fused kernel for fused-compatible head dimensions. This removes the
 host-side `q_rot` and `q_proj` tensors from the fused path. The fused path now
 falls back for `head_dim < 16`, non-power-of-two head dimensions,
-non-power-of-two QJL widths, or key sets larger than the fixed text-key tile.
+non-power-of-two QJL widths, or CPU runs.
 
 A same-process CUDA microcheck on the RTX 4070 compared fused output against
 the materialized Triton score path for a `1x20x64x64` query and `77` packed text
@@ -164,18 +164,18 @@ keys:
 
 ```text
 max_delta=0.000244140625
-text77_public_auto_ms_per_iter=0.0873
-text77_materialized_ms_per_iter=0.1987
+text77_public_auto_ms_per_iter=0.0840
+text77_materialized_ms_per_iter=0.2032
 ```
 
-An experimental streaming fused kernel now handles larger key sets without
-materializing the score tensor, but it is not yet the production `auto` path. On
-the same 4070, a `257` key-token microcheck was correct but slower than the
-materialized Triton fallback:
+After tile tuning, the streaming fused kernel is also faster than the
+materialized Triton fallback on larger-key microchecks:
 
 ```text
-multi257_public_auto_ms_per_iter=0.2461
-multi257_materialized_ms_per_iter=0.2353
-multi257_direct_streaming_ms_per_iter=0.3769
-multi257_streaming_delta=0.0001220703125
+multi257_cross_public_auto_ms_per_iter=0.0841
+multi257_cross_materialized_ms_per_iter=0.1531
+self257_public_auto_ms_per_iter=0.2274
+self257_materialized_ms_per_iter=0.3990
+self1024_4h_public_auto_ms_per_iter=0.5691
+self1024_4h_materialized_ms_per_iter=1.0371
 ```

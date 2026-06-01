@@ -243,20 +243,14 @@ processors before timed generation. This removes repeated codebook/rotation/QJL
 resource construction from the hot image path and moves Triton compilation out
 of the measured Shmoosh run.
 
-The packed backend now also routes CUDA `auto`/`triton` attention through a
-fused Triton output kernel when the key sequence fits in the fixed `128` token
-text-key tile. That kernel keeps V exact, consumes packed K directly, applies
-softmax, and writes the final attention output without allocating a full score
-tensor. It also performs query rotation and QJL projection inside the kernel for
-fused-compatible dimensions, avoiding separate `q_rot` and `q_proj` tensors.
-Larger key sets and unsupported dimensions keep using the materialized Triton
-score fallback.
-
-There is also an experimental streaming fused kernel for larger key sets. It
-uses a stable softmax accumulator across `64`-token key tiles and avoids the
-score tensor, but current 4070 microchecks show it is slower than the
-materialized fallback. It should remain a direct kernel-development path until
-tile shape, register pressure, and QJL correction cost are tuned.
+The packed backend now routes CUDA `auto`/`triton` attention through fused
+Triton output kernels for fused-compatible dimensions. The fast path uses one
+`128`-token key tile for text-key attention. Larger key sets use a streaming
+softmax kernel tuned to `32` query tokens by `16` key tokens on the 4070. Both
+paths keep V exact, consume packed K directly, apply softmax, and write the
+final attention output without allocating a full score tensor. They also perform
+query rotation and QJL projection inside the kernel, avoiding separate `q_rot`
+and `q_proj` tensors.
 
 ## Kernel Direction
 
@@ -268,8 +262,8 @@ The current production path is a staged Torch/Triton design:
    the packed-K Triton kernel.
 3. Avoid reconstructing full K vectors or allocating full score, `q_rot`, or
    `q_proj` tensors on the fused path.
-4. For larger key sets, keep V exact and use existing attention output
-   accumulation as a fallback.
+4. For larger key sets, stream over packed key tiles with a stable softmax
+   accumulator instead of materializing scores.
 
 The score computation can avoid reconstructing full K vectors by rotating query
 tiles into codec space, accumulating codebook dot products, then adding the QJL
@@ -277,9 +271,9 @@ residual correction. A temporary reconstruct-then-attend kernel is useful for
 debugging, but it should not be treated as the production target because it
 reintroduces the fp16 K bandwidth.
 
-The next kernel step is making the streaming fused path faster than the
-materialized fallback for larger key sets, which is needed before self-attention
-can use it by default.
+The next kernel step is moving from kernel microchecks to 1024 image benchmarks
+with fused CUDA `auto` enabled, so the policy harness can tell us whether the
+kernel gains survive full Diffusers overhead.
 
 ## Acceptance
 
