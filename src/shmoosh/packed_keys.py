@@ -36,6 +36,7 @@ class PackedKeyBlock:
     codebook_samples: int = 80_000
     lloyd_iters: int = 80
     code_format: Literal["packed", "byte", "packed_t"] = "packed"
+    norm_dtype: Literal["fp32", "fp16"] = "fp32"
 
     @property
     def shape(self) -> tuple[int, int, int, int]:
@@ -152,6 +153,7 @@ def encode_packed_keys(
     timing_module: str | None = None,
     step_state: Any | None = None,
     code_format: Literal["packed", "byte", "packed_t"] = "packed",
+    norm_dtype: Literal["fp32", "fp16"] = "fp32",
 ) -> PackedKeyBlock:
     torch = _load_torch()
     if keys.ndim != 4:
@@ -162,6 +164,8 @@ def encode_packed_keys(
         raise ValueError("qjl_bits must be non-negative")
     if code_format not in {"packed", "byte", "packed_t"}:
         raise ValueError("code_format must be one of: packed, byte, packed_t")
+    if norm_dtype not in {"fp32", "fp16"}:
+        raise ValueError("norm_dtype must be one of: fp32, fp16")
 
     device = keys.device
     batch, heads, tokens, head_dim = (int(size) for size in keys.shape)
@@ -197,6 +201,7 @@ def encode_packed_keys(
             timing_module=timing_module,
             step_state=step_state,
             code_format=code_format,
+            norm_dtype=norm_dtype,
         )
 
     encoded = codec.encode(
@@ -206,7 +211,10 @@ def encode_packed_keys(
     )
     indices = torch.from_numpy(encoded.indices.astype(np.int64))
     codes = _encode_codes(indices, bits=bits, code_format=code_format).to(device=device)
-    norms = torch.from_numpy(encoded.norms.astype(np.float32)).to(device=device)
+    norms = torch.from_numpy(encoded.norms.astype(np.float32)).to(
+        device=device,
+        dtype=_norm_torch_dtype(torch, norm_dtype),
+    )
 
     residual_signs = None
     residual_norms = None
@@ -233,6 +241,7 @@ def encode_packed_keys(
         codebook_samples=codebook_samples,
         lloyd_iters=lloyd_iters,
         code_format=code_format,
+        norm_dtype=norm_dtype,
     )
 
 
@@ -249,6 +258,7 @@ def _encode_packed_keys_torch(
     timing_module: str | None = None,
     step_state: Any | None = None,
     code_format: Literal["packed", "byte", "packed_t"] = "packed",
+    norm_dtype: Literal["fp32", "fp16"] = "fp32",
 ) -> PackedKeyBlock:
     torch = _load_torch()
     device = keys.device
@@ -256,6 +266,7 @@ def _encode_packed_keys_torch(
     rotation = resources.rotation.to(device=device, dtype=torch.float32)
     codebook = resources.codebook.to(device=device, dtype=torch.float32)
     boundaries = resources.boundaries.to(device=device, dtype=torch.float32)
+    target_norm_dtype = _norm_torch_dtype(torch, norm_dtype)
     if rotation.shape != (head_dim, head_dim):
         raise ValueError("score resources rotation does not match key head dimension")
     if codebook.numel() != (1 << bits):
@@ -267,6 +278,7 @@ def _encode_packed_keys_torch(
         "bits": bits,
         "qjl_bits": qjl_bits,
         "code_format": code_format,
+        "norm_dtype": norm_dtype,
         "head_dim": head_dim,
         "key_tokens": int(keys.shape[2]),
         "heads": int(keys.shape[1]),
@@ -390,7 +402,7 @@ def _encode_packed_keys_torch(
 
     return PackedKeyBlock(
         codes=codes,
-        norms=norms,
+        norms=norms.to(dtype=target_norm_dtype),
         residual_signs=residual_signs,
         residual_norms=residual_norms,
         bits=bits,
@@ -400,6 +412,7 @@ def _encode_packed_keys_torch(
         codebook_samples=codebook_samples,
         lloyd_iters=lloyd_iters,
         code_format=code_format,
+        norm_dtype=norm_dtype,
     )
 
 
@@ -758,6 +771,14 @@ class _NoTimingSpan:
 
 def _ceil_div(numerator: int, denominator: int) -> int:
     return (numerator + denominator - 1) // denominator
+
+
+def _norm_torch_dtype(torch: Any, norm_dtype: str) -> Any:
+    if norm_dtype == "fp32":
+        return torch.float32
+    if norm_dtype == "fp16":
+        return torch.float16
+    raise ValueError("norm_dtype must be one of: fp32, fp16")
 
 
 def _load_torch():

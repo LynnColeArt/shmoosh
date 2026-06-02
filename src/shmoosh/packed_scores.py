@@ -247,7 +247,7 @@ def triton_packed_key_scores(
             key_tokens,
             block.code_bytes_per_vector,
         )
-    norms = block.norms.to(dtype=torch.float32).contiguous().reshape(
+    norms = block.norms.contiguous().reshape(
         head_like, key_tokens
     )
     output = torch.empty(
@@ -434,7 +434,7 @@ if triton is not None and tl is not None:
             norms_ptr + head_like * key_tokens + k_offsets,
             mask=k_mask,
             other=0.0,
-        )
+        ).to(tl.float32)
         accum *= (key_norms * INV_SQRT_D)[None, :]
 
         if QJL_BITS > 0:

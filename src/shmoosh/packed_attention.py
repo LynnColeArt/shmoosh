@@ -167,7 +167,7 @@ def triton_packed_key_attention_output(
             key_tokens,
             block.code_bytes_per_vector,
         )
-    norms = block.norms.to(dtype=torch.float32).contiguous().reshape(
+    norms = block.norms.contiguous().reshape(
         head_like,
         key_tokens,
     )
@@ -246,6 +246,7 @@ def encode_and_attention_output(
     codec: Any | None = None,
     resources: PackedScoreResources | None = None,
     code_format: Literal["packed", "byte", "packed_t"] = "packed",
+    norm_dtype: Literal["fp32", "fp16"] = "fp32",
 ) -> Any:
     """Encode K into a packed block, then run packed-K exact-V attention."""
 
@@ -259,6 +260,7 @@ def encode_and_attention_output(
         codec=codec,
         resources=resources,
         code_format=code_format,
+        norm_dtype=norm_dtype,
     )
     return packed_key_attention_output(
         query,
@@ -525,7 +527,7 @@ if triton is not None and tl is not None:
             norms_ptr + head_like * key_tokens + k_offsets,
             mask=k_mask,
             other=0.0,
-        )
+        ).to(tl.float32)
         scores *= (key_norms * INV_SQRT_D)[None, :]
 
         if QJL_BITS > 0:
@@ -713,7 +715,7 @@ if triton is not None and tl is not None:
                 norms_ptr + head_like * key_tokens + tile_k_offsets,
                 mask=tile_k_mask,
                 other=0.0,
-            )
+            ).to(tl.float32)
             scores *= (key_norms * INV_SQRT_D)[None, :]
 
             if QJL_BITS > 0:

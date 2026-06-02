@@ -114,6 +114,28 @@ def test_encode_packed_keys_transposed_format_matches_reference_decode() -> None
     assert torch.allclose(block.decode(), reference)
 
 
+def test_encode_packed_keys_accepts_fp16_norms() -> None:
+    generator = torch.Generator().manual_seed(12)
+    keys = torch.randn(1, 2, 5, 64, generator=generator)
+    block = encode_packed_keys(
+        keys,
+        bits=7,
+        qjl_bits=0,
+        seed=3,
+        codebook_samples=512,
+        code_format="packed_t",
+        norm_dtype="fp16",
+    )
+    codec = ShmooshCodec(dim=64, bits=7, qjl_bits=0, seed=3, codebook_samples=512)
+    reference = torch.from_numpy(codec.decode(codec.encode(keys.numpy())))
+
+    assert block.norm_dtype == "fp16"
+    assert block.norms.dtype == torch.float16
+    assert block.code_bytes_per_vector == 56
+    assert block.packed_bytes_per_vector == 56 + 2
+    assert torch.allclose(block.decode(), reference, atol=2e-3, rtol=2e-3)
+
+
 def test_encode_packed_keys_rejects_mismatched_codec() -> None:
     keys = torch.zeros(1, 2, 5, 8)
     codec = ShmooshCodec(dim=8, bits=4, qjl_bits=0, seed=3, codebook_samples=256)
@@ -126,6 +148,20 @@ def test_encode_packed_keys_rejects_mismatched_codec() -> None:
             seed=3,
             codebook_samples=512,
             codec=codec,
+        )
+
+
+def test_encode_packed_keys_rejects_invalid_norm_dtype() -> None:
+    keys = torch.zeros(1, 2, 5, 8)
+
+    with pytest.raises(ValueError, match="norm_dtype"):
+        encode_packed_keys(
+            keys,
+            bits=4,
+            qjl_bits=0,
+            seed=3,
+            codebook_samples=512,
+            norm_dtype="quarterish",
         )
 
 

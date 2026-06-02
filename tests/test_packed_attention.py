@@ -137,6 +137,48 @@ def test_packed_key_attention_accepts_transposed_code_block() -> None:
     assert torch.allclose(transposed_output, packed_output, atol=2e-5, rtol=1e-5)
 
 
+def test_packed_key_attention_accepts_fp16_norm_block() -> None:
+    generator = torch.Generator().manual_seed(13)
+    query = torch.randn(1, 2, 4, 64, generator=generator)
+    key = torch.randn(1, 2, 5, 64, generator=generator)
+    value = torch.randn(1, 2, 5, 64, generator=generator)
+    fp16_norm_block = encode_packed_keys(
+        key,
+        bits=7,
+        qjl_bits=0,
+        seed=3,
+        codebook_samples=512,
+        code_format="packed_t",
+        norm_dtype="fp16",
+    )
+    fp32_norm_block = encode_packed_keys(
+        key,
+        bits=7,
+        qjl_bits=0,
+        seed=3,
+        codebook_samples=512,
+        code_format="packed_t",
+    )
+
+    fp16_output = packed_key_attention_output(
+        query,
+        fp16_norm_block,
+        value,
+        backend="torch",
+    )
+    fp32_output = packed_key_attention_output(
+        query,
+        fp32_norm_block,
+        value,
+        backend="torch",
+    )
+
+    assert fp16_output.shape == query.shape
+    delta = torch.abs(fp16_output - fp32_output)
+    assert torch.max(delta) < 5e-4
+    assert torch.mean(delta) < 1e-4
+
+
 def test_rotated_key_attention_matches_exact_reference() -> None:
     generator = torch.Generator().manual_seed(8)
     query = torch.randn(1, 2, 4, 8, generator=generator)
@@ -308,6 +350,7 @@ def test_fused_triton_attention_matches_torch_with_transposed_codes() -> None:
         seed=5,
         codebook_samples=512,
         code_format="packed_t",
+        norm_dtype="fp16",
     )
 
     triton_output = triton_packed_key_attention_output(

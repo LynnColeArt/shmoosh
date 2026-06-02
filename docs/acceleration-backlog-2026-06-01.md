@@ -197,3 +197,11 @@ Fixed-shape graph replay gave a small synthetic gain for the current
 encode+attention moved from `0.8919ms` to `0.8768ms`. This is useful evidence,
 but too small to justify a production static-buffer graph cache before deeper
 packed attention or encode+attention kernel work.
+
+The fp16 norm probe is recorded in `docs/fp16-norm-probe-2026-06-02.md`.
+It added opt-in `norm_dtype="fp16"`, reducing K7/no-QJL `packed_t` storage from
+`60` to `58` bytes/vector. Synthetic quality barely moved
+(`0.023998` to `0.024005` relative RMSE), but attention time did not improve
+(`0.7564ms` fp32 norms versus `0.7686ms` fp16 norms), so fp16 norms stay an
+experimental memory-format knob rather than the preferred self-attention
+default.

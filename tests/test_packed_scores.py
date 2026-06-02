@@ -78,6 +78,7 @@ def test_torch_packed_key_scores_accept_transposed_codes() -> None:
         seed=3,
         codebook_samples=512,
         code_format="packed_t",
+        norm_dtype="fp16",
     )
 
     scores = packed_key_scores(query, block, backend="auto")

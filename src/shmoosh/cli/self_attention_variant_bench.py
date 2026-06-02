@@ -55,6 +55,12 @@ def main() -> None:
         help="Runtime K representation to benchmark.",
     )
     parser.add_argument(
+        "--norm-dtype",
+        choices=["fp32", "fp16"],
+        default="fp32",
+        help="Stored dtype for packed-key norms.",
+    )
+    parser.add_argument(
         "--block-k",
         type=int,
         help="Optional explicit Triton streaming key tile for attention timing.",
@@ -153,6 +159,7 @@ def main() -> None:
                     "qjl_bits": qjl_bits,
                     "backend": args.backend,
                     "code_format": args.code_format,
+                    "norm_dtype": args.norm_dtype,
                     "block_q": args.block_q,
                     "block_k": args.block_k,
                     "error": f"{type(exc).__name__}: {exc}",
@@ -174,6 +181,7 @@ def main() -> None:
         "device": str(device),
         "backend": args.backend,
         "code_format": args.code_format,
+        "norm_dtype": args.norm_dtype,
         "block_q": args.block_q,
         "block_k": args.block_k,
         "cuda_graph": args.cuda_graph,
@@ -227,6 +235,7 @@ def _run_variant(
             codec=codec,
             resources=resources,
             code_format=args.code_format,
+            norm_dtype=args.norm_dtype,
         )
 
     block = encode_once()
@@ -271,6 +280,7 @@ def _run_variant(
         "bits": bits,
         "qjl_bits": qjl_bits,
         "code_format": block.code_format,
+        "norm_dtype": getattr(block, "norm_dtype", "fp32"),
         "packed_bytes_per_vector": block.packed_bytes_per_vector,
         "compression_ratio_fp16": block.compression_ratio(dtype_bytes=2),
         "encode_ms_per_iter": encode_seconds * 1000 / args.iters,
@@ -443,6 +453,7 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         "bits",
         "qjl_bits",
         "code_format",
+        "norm_dtype",
         "packed_bytes_per_vector",
         "compression_ratio_fp16",
         "encode_ms_per_iter",
@@ -481,7 +492,7 @@ def _print_summary(rows: list[dict[str, Any]], *, exact_ms: float) -> None:
             continue
         print(
             f"K{row['bits']} QJL{row['qjl_bits']} "
-            f"{row['code_format']} "
+            f"{row['code_format']} norms={row['norm_dtype']} "
             f"total={row['total_ms_per_iter']:.4f}ms "
             f"encode={row['encode_ms_per_iter']:.4f}ms "
             f"attention={row['attention_ms_per_iter']:.4f}ms "

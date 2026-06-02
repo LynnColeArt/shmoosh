@@ -259,3 +259,8 @@ def test_processor_validates_packed_backend() -> None:
 def test_processor_validates_code_format() -> None:
     with pytest.raises(ValueError, match="code_format"):
         ShmooshAttnProcessor(code_format="wide-open")
+
+
+def test_processor_validates_norm_dtype() -> None:
+    with pytest.raises(ValueError, match="norm_dtype"):
+        ShmooshAttnProcessor(norm_dtype="neon")

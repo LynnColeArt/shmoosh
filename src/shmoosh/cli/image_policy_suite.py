@@ -81,6 +81,11 @@ def main() -> None:
         choices=["packed", "packed_t", "byte"],
         default="packed",
     )
+    parser.add_argument(
+        "--norm-dtype",
+        choices=["fp32", "fp16"],
+        default="fp32",
+    )
     parser.add_argument("--exact-keys", action="store_true")
     parser.add_argument("--quantize-values", action="store_true")
     parser.add_argument(
