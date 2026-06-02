@@ -53,6 +53,8 @@ def test_policy_processor_config_overrides_cli_defaults() -> None:
         codebook_samples=100,
         attention_backend="reference",
         packed_backend="auto",
+        packed_block_q=None,
+        packed_block_k=None,
         code_format="packed",
         norm_dtype="fp32",
         key_encode_backend="split",
@@ -75,6 +77,8 @@ def test_policy_processor_config_overrides_cli_defaults() -> None:
             "codebook_samples": 20000,
             "attention_backend": "packed",
             "packed_backend": "triton",
+            "packed_block_q": 64,
+            "packed_block_k": 32,
             "code_format": "byte",
             "norm_dtype": "fp16",
             "key_encode_backend": "fused",
@@ -95,6 +99,8 @@ def test_policy_processor_config_overrides_cli_defaults() -> None:
         "codebook_samples": 20000,
         "attention_backend": "packed",
         "packed_backend": "triton",
+        "packed_block_q": 64,
+        "packed_block_k": 32,
         "code_format": "byte",
         "norm_dtype": "fp16",
         "key_encode_backend": "fused",
@@ -119,6 +125,8 @@ def test_module_policy_can_override_processor_config() -> None:
         codebook_samples=100,
         attention_backend="reference",
         packed_backend="auto",
+        packed_block_q=None,
+        packed_block_k=None,
         code_format="packed",
         norm_dtype="fp32",
         key_encode_backend="split",
@@ -139,12 +147,15 @@ def test_module_policy_can_override_processor_config() -> None:
             "key_bits": None,
             "value_bits": None,
             "codebook_samples": 20000,
+            "packed_block_q": 64,
+            "packed_block_k": 16,
         }
     }
     module_entry = {
         "bits": 6,
         "shmoosh_policy": {
             "qjl_bits": 256,
+            "packed_block_k": 32,
         },
     }
 
@@ -159,6 +170,8 @@ def test_module_policy_can_override_processor_config() -> None:
         "codebook_samples": 20000,
         "attention_backend": "reference",
         "packed_backend": "auto",
+        "packed_block_q": 64,
+        "packed_block_k": 32,
         "code_format": "packed",
         "norm_dtype": "fp32",
         "key_encode_backend": "split",
@@ -183,6 +196,8 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
         codebook_samples=100,
         attention_backend="reference",
         packed_backend="auto",
+        packed_block_q=None,
+        packed_block_k=None,
         code_format="packed",
         norm_dtype="fp32",
         key_encode_backend="split",
@@ -211,6 +226,8 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
             "codebook_samples": 20000,
             "attention_backend": "packed",
             "packed_backend": "auto",
+            "packed_block_q": 64,
+            "packed_block_k": 32,
             "code_format": "byte",
             "norm_dtype": "fp16",
             "key_encode_backend": "auto",
@@ -227,6 +244,7 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
                 "bits": 6,
                 "quantize_start_percent": 0.2,
                 "packed_backend": "torch",
+                "packed_block_k": 16,
                 "code_format": "packed",
                 "norm_dtype": "fp32",
                 "key_encode_backend": "fused",
@@ -243,6 +261,8 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
     assert [entry["bits"] for entry in metadata["modules"]] == [5, 6]
     assert [entry["attention_backend"] for entry in metadata["modules"]] == ["packed", "packed"]
     assert [entry["packed_backend"] for entry in metadata["modules"]] == ["auto", "torch"]
+    assert [entry["packed_block_q"] for entry in metadata["modules"]] == [64, 64]
+    assert [entry["packed_block_k"] for entry in metadata["modules"]] == [32, 16]
     assert [entry["code_format"] for entry in metadata["modules"]] == ["byte", "packed"]
     assert [entry["norm_dtype"] for entry in metadata["modules"]] == ["fp16", "fp32"]
     assert [entry["key_encode_backend"] for entry in metadata["modules"]] == ["auto", "fused"]

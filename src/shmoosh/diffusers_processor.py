@@ -231,6 +231,8 @@ class ShmooshAttnProcessor:
     score_dot_precision: Literal["ieee", "tf32", "tf32x3"] | None = None
     value_dot_precision: Literal["ieee", "tf32", "tf32x3"] | None = None
     qjl_dot_precision: Literal["ieee", "tf32", "tf32x3"] | None = None
+    packed_block_q: int | None = None
+    packed_block_k: int | None = None
     cache_cross_attention: bool = False
     timing_recorder: ShmooshTimingRecorder | None = field(
         default=None,
@@ -287,6 +289,14 @@ class ShmooshAttnProcessor:
         ):
             if value is not None and value not in {"ieee", "tf32", "tf32x3"}:
                 raise ValueError(f"{name} must be one of: ieee, tf32, tf32x3")
+        for name, value in (
+            ("packed_block_q", self.packed_block_q),
+            ("packed_block_k", self.packed_block_k),
+        ):
+            if value is not None and not _is_valid_packed_tile(value):
+                raise ValueError(
+                    f"{name} must be a power-of-two integer greater than or equal to 16"
+                )
 
     def __call__(
         self,
@@ -400,6 +410,8 @@ class ShmooshAttnProcessor:
                 "key_encode_backend": self.key_encode_backend,
                 "dot_precision": self.dot_precision,
                 **self._dot_precision_payload(),
+                "packed_block_q": self.packed_block_q,
+                "packed_block_k": self.packed_block_k,
                 "heads": heads,
                 "query_tokens": int(query.shape[2]),
                 "key_tokens": key_tokens,
@@ -437,6 +449,8 @@ class ShmooshAttnProcessor:
                     resources=resources,
                     backend=self.packed_backend,
                     dot_precision=self.dot_precision,
+                    block_q=self.packed_block_q,
+                    block_k=self.packed_block_k,
                     **self._dot_precision_kwargs(),
                 )
         else:
@@ -575,34 +589,50 @@ class ShmooshAttnProcessor:
             bits=key_bits,
             codec=codec,
         )
-        query = torch.zeros(
-            (1, 1, 1, head_dim),
-            device=target_device,
-            dtype=target_dtype,
-        )
-        key = torch.zeros_like(query)
-        value = torch.zeros_like(query)
-        block = encode_packed_keys(
-            key,
-            bits=key_bits,
-            qjl_bits=self.qjl_bits,
-            seed=self.seed,
-            codebook_samples=self.codebook_samples,
-            codec=codec,
-            resources=resources,
-            key_encode_backend=self.key_encode_backend,
-            code_format=self.code_format,
-            norm_dtype=self.norm_dtype,
-        )
-        packed_key_attention_output(
-            query,
-            block,
-            value,
-            resources=resources,
-            backend=self.packed_backend,
-            dot_precision=self.dot_precision,
-            **self._dot_precision_kwargs(),
-        )
+        def _warm_shape(*, query_tokens: int, key_tokens: int) -> None:
+            query = torch.zeros(
+                (1, 1, query_tokens, head_dim),
+                device=target_device,
+                dtype=target_dtype,
+            )
+            key = torch.zeros(
+                (1, 1, key_tokens, head_dim),
+                device=target_device,
+                dtype=target_dtype,
+            )
+            value = torch.zeros_like(key)
+            block = encode_packed_keys(
+                key,
+                bits=key_bits,
+                qjl_bits=self.qjl_bits,
+                seed=self.seed,
+                codebook_samples=self.codebook_samples,
+                codec=codec,
+                resources=resources,
+                key_encode_backend=self.key_encode_backend,
+                code_format=self.code_format,
+                norm_dtype=self.norm_dtype,
+            )
+            packed_key_attention_output(
+                query,
+                block,
+                value,
+                resources=resources,
+                backend=self.packed_backend,
+                dot_precision=self.dot_precision,
+                block_q=self.packed_block_q,
+                block_k=self.packed_block_k,
+                **self._dot_precision_kwargs(),
+            )
+
+        _warm_shape(query_tokens=1, key_tokens=1)
+        if target_device.type == "cuda" and self.packed_backend in {"auto", "triton"}:
+            key_tile = 128 if self.packed_block_k is None else self.packed_block_k
+            query_tile = 64 if self.packed_block_q is None else self.packed_block_q
+            _warm_shape(
+                query_tokens=max(64, query_tile),
+                key_tokens=max(256, key_tile * 2),
+            )
         if target_device.type == "cuda":
             torch.cuda.synchronize(target_device)
         return True
@@ -703,6 +733,10 @@ def warm_packed_attention_processor(
         device=device,
         dtype=dtype,
     )
+
+
+def _is_valid_packed_tile(value: int) -> bool:
+    return isinstance(value, int) and value >= 16 and value & (value - 1) == 0
 
 
 def _attention_head_dim(attn: Any) -> int:

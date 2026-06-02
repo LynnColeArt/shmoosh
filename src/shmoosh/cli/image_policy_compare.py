@@ -196,6 +196,8 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         choices=["auto", "torch", "triton"],
         default="auto",
     )
+    parser.add_argument("--packed-block-q", type=int)
+    parser.add_argument("--packed-block-k", type=int)
     parser.add_argument(
         "--code-format",
         choices=["packed", "packed_t", "byte"],

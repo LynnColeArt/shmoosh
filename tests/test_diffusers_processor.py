@@ -256,6 +256,14 @@ def test_processor_validates_packed_backend() -> None:
         ShmooshAttnProcessor(packed_backend="cuda-but-magic")
 
 
+def test_processor_validates_packed_block_tiles() -> None:
+    ShmooshAttnProcessor(packed_block_q=64, packed_block_k=32)
+    with pytest.raises(ValueError, match="packed_block_q"):
+        ShmooshAttnProcessor(packed_block_q=12)
+    with pytest.raises(ValueError, match="packed_block_k"):
+        ShmooshAttnProcessor(packed_block_k=24)
+
+
 def test_processor_validates_code_format() -> None:
     with pytest.raises(ValueError, match="code_format"):
         ShmooshAttnProcessor(code_format="wide-open")

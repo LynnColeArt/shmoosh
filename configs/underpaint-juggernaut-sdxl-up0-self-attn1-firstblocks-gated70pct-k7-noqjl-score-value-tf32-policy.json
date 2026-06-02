@@ -43,6 +43,17 @@
       "previous_split_mean_packed_encode_ms": 0.9955643607234513,
       "comparison_note": "Direct packed_t write removes the split path's transpose tax while preserving the split policy's image metrics."
     },
+    "warmed_tile_compare_1024": {
+      "output_dir": "captures/image-policy-compare-juggernaut-up0-self-attn1-k7-noqjl-1024-score-value-tile-ab-warmed-20260602",
+      "case_count": 3,
+      "min_psnr_db": 52.09762483247828,
+      "mean_psnr_db": 54.214794865259385,
+      "mean_speedup": 1.0976606043699124,
+      "mean_packed_attention_ms": 0.7390400170590038,
+      "bk16_mean_speedup": 1.0869602721626395,
+      "bk16_mean_packed_attention_ms": 0.7738236303406733,
+      "comparison_note": "After CUDA warmup was expanded to compile the streaming kernel, packed_block_q=64/packed_block_k=32 was the better steady-state tile for the RTX 4070 1024 suite."
+    },
     "note": "Promoted as the balanced RTX 4070 fast-mode candidate after same-process comparison. Keep ieee as the high-fidelity reference and rerun this comparison on the 3080 before calling it a universal default."
   },
   "default": {
@@ -60,6 +71,8 @@
     "quantize_values": false,
     "attention_backend": "packed",
     "packed_backend": "auto",
+    "packed_block_q": 64,
+    "packed_block_k": 32,
     "code_format": "packed_t",
     "norm_dtype": "fp32",
     "key_encode_backend": "split",

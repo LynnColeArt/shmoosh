@@ -66,6 +66,44 @@ def test_packed_key_attention_accepts_preencoded_block() -> None:
     assert torch.allclose(output, torch.ones_like(output))
 
 
+def test_packed_key_attention_passes_explicit_triton_tiles(monkeypatch) -> None:
+    query = torch.zeros(1, 2, 3, 8)
+    key = torch.zeros(1, 2, 5, 8)
+    value = torch.ones(1, 2, 5, 8)
+    block = encode_packed_keys(key, bits=4, qjl_bits=0, seed=3, codebook_samples=512)
+    calls = {}
+
+    def _can_use(*_args, **kwargs):
+        calls["can_use_block_q"] = kwargs["block_q"]
+        calls["can_use_block_k"] = kwargs["block_k"]
+        return True
+
+    def _triton_output(*args, **kwargs):
+        calls["triton_block_q"] = kwargs["block_q"]
+        calls["triton_block_k"] = kwargs["block_k"]
+        return args[0]
+
+    monkeypatch.setattr("shmoosh.packed_attention._can_use_fused_triton_attention", _can_use)
+    monkeypatch.setattr("shmoosh.packed_attention.triton_packed_key_attention_output", _triton_output)
+
+    output = packed_key_attention_output(
+        query,
+        block,
+        value,
+        backend="auto",
+        block_q=64,
+        block_k=32,
+    )
+
+    assert output is query
+    assert calls == {
+        "can_use_block_q": 64,
+        "can_use_block_k": 32,
+        "triton_block_q": 64,
+        "triton_block_k": 32,
+    }
+
+
 def test_packed_key_attention_accepts_byte_code_block() -> None:
     generator = torch.Generator().manual_seed(6)
     query = torch.randn(1, 2, 4, 8, generator=generator)
@@ -214,12 +252,28 @@ def test_auto_streaming_key_tile_uses_wider_no_qjl_default() -> None:
 
 def test_k7_head64_uses_compact_streaming_tile() -> None:
     key = torch.zeros(1, 1, 2, 64)
-    block = encode_packed_keys(key, bits=7, qjl_bits=0, seed=3, codebook_samples=512)
+    packed_block = encode_packed_keys(
+        key,
+        bits=7,
+        qjl_bits=0,
+        seed=3,
+        codebook_samples=512,
+    )
+    packed_t_block = encode_packed_keys(
+        key,
+        bits=7,
+        qjl_bits=0,
+        seed=3,
+        codebook_samples=512,
+        code_format="packed_t",
+    )
 
-    assert _select_streaming_query_tile(16, block, 0) == 64
-    assert _select_streaming_key_tile(128, 0, block=block) == 16
-    assert _select_streaming_query_tile(32, block, 0) == 32
-    assert _select_streaming_key_tile(32, 0, block=block) == 32
+    assert _select_streaming_query_tile(16, packed_block, 0) == 64
+    assert _select_streaming_key_tile(128, 0, block=packed_block) == 16
+    assert _select_streaming_query_tile(16, packed_t_block, 0) == 64
+    assert _select_streaming_key_tile(128, 0, block=packed_t_block) == 32
+    assert _select_streaming_query_tile(32, packed_t_block, 0) == 32
+    assert _select_streaming_key_tile(32, 0, block=packed_t_block) == 32
 
 
 @pytest.mark.skipif(

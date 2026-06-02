@@ -80,6 +80,16 @@ def main() -> None:
         help="Packed score backend when --attention-backend=packed.",
     )
     parser.add_argument(
+        "--packed-block-q",
+        type=int,
+        help="Override Triton packed-attention query tile size.",
+    )
+    parser.add_argument(
+        "--packed-block-k",
+        type=int,
+        help="Override Triton packed-attention key tile size.",
+    )
+    parser.add_argument(
         "--code-format",
         choices=["packed", "packed_t", "byte"],
         default="packed",
@@ -463,6 +473,8 @@ def _processor_config(
         "codebook_samples": args.codebook_samples,
         "attention_backend": args.attention_backend,
         "packed_backend": args.packed_backend,
+        "packed_block_q": getattr(args, "packed_block_q", None),
+        "packed_block_k": getattr(args, "packed_block_k", None),
         "code_format": args.code_format,
         "norm_dtype": args.norm_dtype,
         "key_encode_backend": getattr(args, "key_encode_backend", "split"),
@@ -497,6 +509,8 @@ def _apply_processor_overrides(config: dict[str, Any], overrides: Any) -> None:
         ("codebook_samples", "codebook_samples"),
         ("attention_backend", "attention_backend"),
         ("packed_backend", "packed_backend"),
+        ("packed_block_q", "packed_block_q"),
+        ("packed_block_k", "packed_block_k"),
         ("code_format", "code_format"),
         ("norm_dtype", "norm_dtype"),
         ("key_encode_backend", "key_encode_backend"),
@@ -606,6 +620,8 @@ def _processor_metadata(config: dict[str, Any]) -> dict[str, Any]:
         "quantize_values": config["quantize_values"],
         "attention_backend": config["attention_backend"],
         "packed_backend": config["packed_backend"],
+        "packed_block_q": config["packed_block_q"],
+        "packed_block_k": config["packed_block_k"],
         "code_format": config["code_format"],
         "norm_dtype": config["norm_dtype"],
         "key_encode_backend": config["key_encode_backend"],

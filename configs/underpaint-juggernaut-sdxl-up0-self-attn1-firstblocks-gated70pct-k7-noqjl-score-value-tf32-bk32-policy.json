@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "description": "BK32 tile candidate for the balanced exact-first 70% K7/no-QJL score/value-TF32 Shmoosh policy on the first self-attention transformer block in each up_blocks.0 attention group of the local Underpaint Juggernaut SDXL checkpoint.",
+  "source": "configs/underpaint-juggernaut-sdxl-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-score-value-tf32-policy.json",
+  "validation": {
+    "status": "tile_candidate_4070_promoted",
+    "candidate_reason": "Pins packed_block_q=64 and packed_block_k=32 so same-process image comparisons can measure the tile choice independently from cross-run timing noise.",
+    "warmed_tile_compare_1024": {
+      "output_dir": "captures/image-policy-compare-juggernaut-up0-self-attn1-k7-noqjl-1024-score-value-tile-ab-warmed-20260602",
+      "case_count": 3,
+      "min_psnr_db": 52.09762483247828,
+      "mean_psnr_db": 54.214794865259385,
+      "mean_speedup": 1.0976606043699124,
+      "mean_packed_attention_ms": 0.7390400170590038,
+      "bk16_mean_speedup": 1.0869602721626395,
+      "bk16_mean_packed_attention_ms": 0.7738236303406733,
+      "comparison_note": "Promoted as the 4070 default tile for the packed_t K7/head64/no-QJL self-attention path after streaming warmup."
+    }
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "shmoosh_policy": {
+    "bits": 7,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 0,
+    "codebook_samples": 80000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false,
+    "attention_backend": "packed",
+    "packed_backend": "auto",
+    "packed_block_q": 64,
+    "packed_block_k": 32,
+    "code_format": "packed_t",
+    "norm_dtype": "fp32",
+    "key_encode_backend": "split",
+    "dot_precision": "ieee",
+    "score_dot_precision": "tf32",
+    "value_dot_precision": "tf32"
+  },
+  "quantized_modules": [
+    {
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7
+    },
+    {
+      "name": "up_blocks.0.attentions.1.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7
+    },
+    {
+      "name": "up_blocks.0.attentions.2.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7
+    }
+  ],
+  "exact_modules": []
+}

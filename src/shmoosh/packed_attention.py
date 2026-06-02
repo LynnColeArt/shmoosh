@@ -20,7 +20,8 @@ _FUSED_TRITON_STREAMING_QUERY_TILE = 32
 _FUSED_TRITON_STREAMING_K7_HEAD64_QUERY_TILE = 64
 _FUSED_TRITON_STREAMING_QJL_KEY_TILE = 16
 _FUSED_TRITON_STREAMING_NO_QJL_KEY_TILE = 32
-_FUSED_TRITON_STREAMING_K7_HEAD64_KEY_TILE = 16
+_FUSED_TRITON_STREAMING_K7_HEAD64_PACKED_KEY_TILE = 16
+_FUSED_TRITON_STREAMING_K7_HEAD64_PACKED_T_KEY_TILE = 32
 _FUSED_TRITON_KEY_TILE = _FUSED_TRITON_SINGLE_KEY_TILE
 
 
@@ -37,6 +38,8 @@ def packed_key_attention_output(
     score_dot_precision: DotPrecision | None = None,
     value_dot_precision: DotPrecision | None = None,
     qjl_dot_precision: DotPrecision | None = None,
+    block_q: int | None = None,
+    block_k: int | None = None,
 ) -> Any:
     """Compute attention output from packed keys and exact values.
 
@@ -54,6 +57,8 @@ def packed_key_attention_output(
         value_dot_precision=value_dot_precision,
         qjl_dot_precision=qjl_dot_precision,
     )
+    triton_block_q = _FUSED_TRITON_QUERY_TILE if block_q is None else block_q
+    triton_block_k = _FUSED_TRITON_KEY_TILE if block_k is None else block_k
 
     target_dtype = query.dtype if output_dtype is None else output_dtype
     if backend == "torch":
@@ -64,13 +69,21 @@ def packed_key_attention_output(
             resources=resources,
             output_dtype=target_dtype,
         )
-    if _can_use_fused_triton_attention(query, block, value):
+    if _can_use_fused_triton_attention(
+        query,
+        block,
+        value,
+        block_q=triton_block_q,
+        block_k=triton_block_k,
+    ):
         return triton_packed_key_attention_output(
             query,
             block,
             value,
             resources=resources,
             output_dtype=target_dtype,
+            block_q=triton_block_q,
+            block_k=triton_block_k,
             dot_precision=dot_precision,
             **dot_precisions,
         )
@@ -367,9 +380,16 @@ def _can_use_fused_triton_attention(
     block: PackedKeyBlock,
     value: Any,
     *,
+    block_q: int = _FUSED_TRITON_QUERY_TILE,
     block_k: int = _FUSED_TRITON_KEY_TILE,
 ) -> bool:
-    return _can_launch_fused_triton_attention(query, block, value, block_k=block_k)
+    return _can_launch_fused_triton_attention(
+        query,
+        block,
+        value,
+        block_q=block_q,
+        block_k=block_k,
+    )
 
 
 def _can_launch_fused_triton_attention(
@@ -377,6 +397,7 @@ def _can_launch_fused_triton_attention(
     block: PackedKeyBlock,
     value: Any,
     *,
+    block_q: int = _FUSED_TRITON_QUERY_TILE,
     block_k: int = _FUSED_TRITON_KEY_TILE,
 ) -> bool:
     return (
@@ -391,6 +412,8 @@ def _can_launch_fused_triton_attention(
         and block.head_dim >= 16
         and _is_power_of_two(block.head_dim)
         and _supports_fused_qjl_width(block.qjl_bits)
+        and block_q >= 16
+        and _is_power_of_two(block_q)
         and block_k >= 16
         and _is_power_of_two(block_k)
     )
@@ -421,7 +444,9 @@ def _select_streaming_key_tile(
     if block_k != _FUSED_TRITON_KEY_TILE:
         return block_k
     if block is not None and _uses_k7_head64_compact_tile(block, effective_qjl_bits):
-        return _FUSED_TRITON_STREAMING_K7_HEAD64_KEY_TILE
+        if block.code_format == "packed_t":
+            return _FUSED_TRITON_STREAMING_K7_HEAD64_PACKED_T_KEY_TILE
+        return _FUSED_TRITON_STREAMING_K7_HEAD64_PACKED_KEY_TILE
     if effective_qjl_bits:
         return _FUSED_TRITON_STREAMING_QJL_KEY_TILE
     return _FUSED_TRITON_STREAMING_NO_QJL_KEY_TILE
