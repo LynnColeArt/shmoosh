@@ -111,3 +111,14 @@ reading-nook: 52.0788 dB -> 51.8747 dB
 
 That makes fused encode useful for a user-selectable 4070 speed mode, not the
 balanced default.
+
+## Parity Follow-Up
+
+`docs/packed-encode-parity-2026-06-02.md` adds a repeatable split-vs-fused
+encode QA probe. On 15 captured self-attention tensors, fused encode differed
+from split by 30 total code indices with a worst per-capture rate of
+`0.00000763`. Norm deltas were tiny (`max_abs=0.00000191`) and an isolation
+check showed the output difference came almost entirely from the code-index
+flips, not stored norm drift.
+
+That narrows the quality recovery target to bucket-boundary compatibility.

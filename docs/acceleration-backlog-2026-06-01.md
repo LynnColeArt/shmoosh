@@ -235,3 +235,9 @@ and cuts score+value image packed encode from `0.9956ms` to `0.5506ms`, moving
 scheduled quantized time from `3.3231ms` to `2.8287ms`. The cost is hard-case
 quality: reading-nook drops from `52.08 dB` to `51.87 dB`. Keep split encode as
 the balanced default; keep fused encode as an opt-in speed tradeoff.
+
+The parity follow-up is recorded in
+`docs/packed-encode-parity-2026-06-02.md`. Across 15 captured self-attention
+tensors, fused encode introduced 30 total code-index differences with a worst
+rate of `0.00000763`; stored norm drift was negligible. The remaining quality
+question is bucket-boundary compatibility, not a broad encode-layout bug.
