@@ -761,6 +761,11 @@ if triton is not None and tl is not None:
         else:
             q_proj = tl.zeros((BLOCK_Q, 1), dtype=tl.float32)
 
+        bit_position = dim_offsets[:, None] * BITS
+        byte_index = bit_position // 8
+        bit_offset = bit_position % 8
+        needs_next_byte = (bit_offset + BITS) > 8
+
         m_i = tl.full((BLOCK_Q, 1), -float("inf"), dtype=tl.float32)
         l_i = tl.zeros((BLOCK_Q, 1), dtype=tl.float32)
         acc = tl.zeros((BLOCK_Q, HEAD_DIM), dtype=tl.float32)
@@ -778,10 +783,6 @@ if triton is not None and tl is not None:
                     other=0,
                 ).to(tl.uint32)
             else:
-                bit_position = dim_offsets[:, None] * BITS
-                byte_index = bit_position // 8
-                bit_offset = bit_position % 8
-                needs_next_byte = (bit_offset + BITS) > 8
                 if TRANSPOSED_CODES:
                     code_byte = tl.load(
                         codes_ptr
