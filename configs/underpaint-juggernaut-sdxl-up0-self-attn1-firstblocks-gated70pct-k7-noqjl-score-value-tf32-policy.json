@@ -3,7 +3,7 @@
   "description": "Balanced exact-first 70% K7/no-QJL Shmoosh policy for the first self-attention transformer block in each up_blocks.0 attention group of the local Underpaint Juggernaut SDXL checkpoint. This variant keeps Q rotation at ieee precision while using tf32 for packed score and attention-value dots.",
   "source": "docs/tf32-dot-split-probe-2026-06-02.md",
   "validation": {
-    "status": "balanced_candidate_suite_passed",
+    "status": "balanced_4070_fast_mode_promoted",
     "candidate_reason": "All-TF32 is faster but pays a small reading-nook PSNR tax. This split keeps Q rotation at ieee precision while using tf32 for the score and value dots, recovering the hard-case PSNR in the 1024 suite.",
     "validation_suite_1024": {
       "output_dir": "captures/image-policy-suite-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-1024-packedt-score-value-tf32",
@@ -18,7 +18,20 @@
       "mean_packed_encode_ms": 1.27629,
       "mean_packed_attention_ms": 0.998178
     },
-    "note": "The image-run whole-image speedup is inflated by a slow first baseline pass, and scheduled quantized timing was noisy. Treat this as a quality-recovery candidate, not as a promoted fast default."
+    "same_process_precision_compare_1024": {
+      "output_dir": "captures/image-policy-compare-juggernaut-up0-self-attn1-k7-noqjl-1024-precision-20260602",
+      "case_count": 3,
+      "min_psnr_db": 52.07878234744321,
+      "mean_psnr_db": 54.160336587856875,
+      "mean_speedup": 1.8147095514055207,
+      "mean_scheduled_quantized_ms": 3.2340111124708693,
+      "mean_packed_encode_ms": 0.956477916420058,
+      "mean_packed_attention_ms": 0.8613014662707293,
+      "ieee_mean_packed_attention_ms": 1.304278076902308,
+      "all_tf32_mean_packed_attention_ms": 0.7882646233257321,
+      "comparison_note": "Balanced 4070 fast mode: preserves reading-nook PSNR at the ieee level while recovering most of the all-TF32 packed-attention speedup."
+    },
+    "note": "Promoted as the balanced RTX 4070 fast-mode candidate after same-process comparison. Keep ieee as the high-fidelity reference and rerun this comparison on the 3080 before calling it a universal default."
   },
   "default": {
     "quantize_keys": false,

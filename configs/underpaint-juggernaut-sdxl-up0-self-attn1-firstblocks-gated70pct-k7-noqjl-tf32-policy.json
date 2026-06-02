@@ -18,6 +18,17 @@
       "mean_packed_encode_ms": 0.787407,
       "mean_packed_attention_ms": 0.72934
     },
+    "same_process_precision_compare_1024": {
+      "output_dir": "captures/image-policy-compare-juggernaut-up0-self-attn1-k7-noqjl-1024-precision-20260602",
+      "case_count": 3,
+      "min_psnr_db": 51.70428009662071,
+      "mean_psnr_db": 54.17276064397364,
+      "mean_speedup": 1.79522877018043,
+      "mean_scheduled_quantized_ms": 3.008827476555274,
+      "mean_packed_encode_ms": 0.9560541129084649,
+      "mean_packed_attention_ms": 0.7882646233257321,
+      "comparison_note": "Lowest packed-attention time, but retains the known reading-nook PSNR tax versus ieee and score-value TF32."
+    },
     "note": "Keep the ieee packed_t policy as the high-fidelity default. Use this tf32 policy as an explicit 4070 fast mode until broader image and 3080 validation decide whether the PSNR tax is acceptable by default."
   },
   "default": {

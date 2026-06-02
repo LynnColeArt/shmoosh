@@ -107,7 +107,8 @@ that hardware is available. If the quality tax remains bounded, `tf32` may
 become the practical 4070 fast policy.
 
 Follow-up precision splitting is recorded in
-`docs/tf32-dot-split-probe-2026-06-02.md`. The best balanced candidate keeps Q
-rotation at `ieee` precision while using `tf32` for score and value dots. It
-recovers reading-nook quality to `52.08 dB`, but is slower than all-TF32 and
-needs another timing pass before promotion.
+`docs/tf32-dot-split-probe-2026-06-02.md`, with the same-process comparison in
+`docs/precision-policy-compare-2026-06-02.md`. The best balanced 4070 fast-mode
+candidate keeps Q rotation at `ieee` precision while using `tf32` for score and
+value dots. It recovers reading-nook quality to `52.08 dB` while reducing mean
+packed-attention time from `1.3043ms` to `0.8613ms` versus IEEE.

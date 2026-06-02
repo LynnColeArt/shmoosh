@@ -219,5 +219,11 @@ The TF32 dot-split probe is recorded in
 value, and QJL precision controls. Synthetic timing showed score+value TF32 as
 the strongest quality-preserving split (`0.3904ms` packed attention versus
 `0.3394ms` all-TF32 and `0.6232ms` ieee). The 1024 image suite recovered
-reading-nook quality to `52.08 dB`, but image timing was noisy, so keep it as a
-balanced candidate pending rerun.
+reading-nook quality to `52.08 dB`, but image timing was noisy. The follow-up
+same-process comparison is recorded in
+`docs/precision-policy-compare-2026-06-02.md`: score+value TF32 is now the
+balanced RTX 4070 fast-mode candidate, with mean packed attention at
+`0.8613ms` versus `1.3043ms` for IEEE and hard-case PSNR preserved at
+`52.08 dB`. Whole-image speed remains close to baseline on warm cases, so the
+next speed work should reduce remaining scheduled/encode overhead or use this
+runner to compare broader policy layers.

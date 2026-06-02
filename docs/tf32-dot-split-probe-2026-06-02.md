@@ -106,10 +106,25 @@ high-fidelity packed_t suite (`1.2806ms -> 0.9982ms`), but this image run had
 noisy encode and scheduled-quantized timings. The whole-image speedup is also
 inflated by a slow first baseline pass.
 
+## Same-Process Compare
+
+The follow-up same-process comparison is recorded in
+`docs/precision-policy-compare-2026-06-02.md`.
+
+| Candidate | Min PSNR | Mean PSNR | Packed attention | Scheduled quantized |
+| --- | ---: | ---: | ---: | ---: |
+| `ieee` | 52.0730 dB | 54.2689 dB | 1.3043 ms | 3.5793 ms |
+| `all_tf32` | 51.7043 dB | 54.1728 dB | 0.7883 ms | 3.0088 ms |
+| `score_value_tf32` | 52.0788 dB | 54.1603 dB | 0.8613 ms | 3.2340 ms |
+
+The rerun removes the main ambiguity from the first image suite. Score+value
+TF32 keeps reading-nook quality at the high-fidelity level while cutting packed
+attention by about `34%` versus IEEE.
+
 ## Read
 
-All-TF32 remains the clearer fast mode. Score+value TF32 is the better
-quality-recovery candidate and should be rerun before promotion:
+All-TF32 remains the lowest packed-attention time. Score+value TF32 is now the
+balanced 4070 fast-mode candidate:
 
 ```text
 configs/underpaint-juggernaut-sdxl-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-score-value-tf32-policy.json

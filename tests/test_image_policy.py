@@ -9,6 +9,10 @@ from shmoosh.cli.image_ab_smoke import (
     _select_policy_modules,
 )
 from shmoosh.cli.image_policy_suite import _aggregate_rows, _cases_from_payload
+from shmoosh.cli.image_policy_compare import (
+    _aggregate_candidate_rows,
+    _parse_candidate_spec,
+)
 from shmoosh.diffusers_processor import DenoisingStepState, ScheduledShmooshAttnProcessor
 
 
@@ -337,3 +341,70 @@ def test_policy_suite_aggregate_reports_timing_speedup() -> None:
     assert aggregate["mean_baseline_seconds"] == 9.0
     assert aggregate["mean_shmoosh_seconds"] == 6.0
     assert aggregate["mean_speedup"] == 1.5
+
+
+def test_policy_compare_candidate_spec_accepts_label_path() -> None:
+    label, path = _parse_candidate_spec("score-value=configs/policy.json")
+
+    assert label == "score_value"
+    assert path == "configs/policy.json"
+
+
+def test_policy_compare_candidate_spec_uses_file_stem() -> None:
+    label, path = _parse_candidate_spec("configs/packed-tf32-policy.json")
+
+    assert label == "packed_tf32_policy"
+    assert path == "configs/packed-tf32-policy.json"
+
+
+def test_policy_compare_aggregates_by_candidate() -> None:
+    rows = [
+        {
+            "candidate_label": "ieee",
+            "policy_file": "ieee.json",
+            "mse": 0.1,
+            "mae": 0.2,
+            "psnr_db": 40.0,
+            "baseline_seconds": 10.0,
+            "shmoosh_seconds": 5.0,
+            "processor_timing_seconds": 0.3,
+            "processor_timing_records": 3,
+            "packed_attention_seconds": 0.02,
+            "mean_packed_attention_ms": 2.0,
+        },
+        {
+            "candidate_label": "ieee",
+            "policy_file": "ieee.json",
+            "mse": 0.3,
+            "mae": 0.4,
+            "psnr_db": 44.0,
+            "baseline_seconds": 8.0,
+            "shmoosh_seconds": 7.0,
+            "processor_timing_seconds": 0.5,
+            "processor_timing_records": 5,
+            "packed_attention_seconds": 0.04,
+            "mean_packed_attention_ms": 4.0,
+        },
+        {
+            "candidate_label": "tf32",
+            "policy_file": "tf32.json",
+            "mse": 0.2,
+            "mae": 0.3,
+            "psnr_db": 42.0,
+            "baseline_seconds": 10.0,
+            "shmoosh_seconds": 4.0,
+            "processor_timing_seconds": 0.2,
+            "processor_timing_records": 2,
+            "packed_attention_seconds": 0.01,
+            "mean_packed_attention_ms": 1.0,
+        },
+    ]
+
+    aggregates = _aggregate_candidate_rows(rows)
+
+    assert [row["candidate_label"] for row in aggregates] == ["ieee", "tf32"]
+    assert aggregates[0]["mean_speedup"] == 1.5
+    assert aggregates[0]["mean_processor_timing_seconds"] == 0.4
+    assert aggregates[0]["mean_packed_attention_seconds"] == 0.03
+    assert aggregates[0]["mean_packed_attention_ms"] == 3.0
+    assert aggregates[1]["mean_speedup"] == 2.5
