@@ -37,6 +37,7 @@ shmoosh-packed-score-smoke = "shmoosh.cli.packed_score_smoke:main"
 shmoosh-packed-attention-smoke = "shmoosh.cli.packed_attention_smoke:main"
 shmoosh-self-attention-variant-bench = "shmoosh.cli.self_attention_variant_bench:main"
 shmoosh-packed-attention-perf-guard = "shmoosh.cli.packed_attention_perf_guard:main"
+shmoosh-attention-sparsity-oracle = "shmoosh.cli.attention_sparsity_oracle:main"
 
 [build-system]
 requires = ["hatchling"]
