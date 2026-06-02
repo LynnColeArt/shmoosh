@@ -66,6 +66,14 @@ def main() -> None:
     )
     parser.add_argument("--warmup-iters", type=int, default=3)
     parser.add_argument("--iters", type=int, default=20)
+    parser.add_argument(
+        "--cuda-graph",
+        action="store_true",
+        help=(
+            "Also time attention and encode+attention through CUDA graph replay. "
+            "This is a fixed-shape ceiling probe, not a production runtime path."
+        ),
+    )
     parser.add_argument("--output-dir", default="captures/self-attention-variant-bench")
     args = parser.parse_args()
 
@@ -168,6 +176,7 @@ def main() -> None:
         "code_format": args.code_format,
         "block_q": args.block_q,
         "block_k": args.block_k,
+        "cuda_graph": args.cuda_graph,
         "warmup_iters": args.warmup_iters,
         "iters": args.iters,
         "exact_attention_seconds": exact_seconds,
@@ -271,6 +280,28 @@ def _run_variant(
         "block_q": args.block_q,
         "block_k": args.block_k,
     }
+    if args.cuda_graph:
+        try:
+            graph_attention_seconds = _time_cuda_graph_call(
+                attention,
+                torch=torch,
+                device=device,
+                warmup_iters=args.warmup_iters,
+                iters=args.iters,
+            )
+            graph_total_seconds = _time_cuda_graph_call(
+                encode_and_attention_once,
+                torch=torch,
+                device=device,
+                warmup_iters=args.warmup_iters,
+                iters=args.iters,
+            )
+            row["graph_attention_ms_per_iter"] = (
+                graph_attention_seconds * 1000 / args.iters
+            )
+            row["graph_total_ms_per_iter"] = graph_total_seconds * 1000 / args.iters
+        except Exception as exc:
+            row["cuda_graph_error"] = f"{type(exc).__name__}: {exc}"
     row.update(metrics)
     return row
 
@@ -371,6 +402,42 @@ def _time_call(
     return time.perf_counter() - start
 
 
+def _time_cuda_graph_call(
+    fn: Callable[[], Any],
+    *,
+    torch: Any,
+    device: str,
+    warmup_iters: int,
+    iters: int,
+) -> float:
+    if not device.startswith("cuda") or not torch.cuda.is_available():
+        raise ValueError("CUDA graph timing requires a CUDA device")
+
+    cuda_device = torch.device(device)
+    with torch.cuda.device(cuda_device):
+        side_stream = torch.cuda.Stream(device=cuda_device)
+        side_stream.wait_stream(torch.cuda.current_stream(cuda_device))
+        with torch.cuda.stream(side_stream):
+            for _ in range(max(warmup_iters, 1)):
+                fn()
+        torch.cuda.current_stream(cuda_device).wait_stream(side_stream)
+        torch.cuda.synchronize(cuda_device)
+
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            fn()
+
+        for _ in range(warmup_iters):
+            graph.replay()
+        torch.cuda.synchronize(cuda_device)
+
+        start = time.perf_counter()
+        for _ in range(iters):
+            graph.replay()
+        torch.cuda.synchronize(cuda_device)
+        return time.perf_counter() - start
+
+
 def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     fieldnames = [
         "bits",
@@ -381,6 +448,8 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         "encode_ms_per_iter",
         "attention_ms_per_iter",
         "total_ms_per_iter",
+        "graph_attention_ms_per_iter",
+        "graph_total_ms_per_iter",
         "mse",
         "rmse",
         "relative_rmse",
@@ -391,6 +460,7 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         "backend",
         "block_q",
         "block_k",
+        "cuda_graph_error",
         "error",
     ]
     with path.open("w", newline="", encoding="utf-8") as handle:
@@ -419,6 +489,13 @@ def _print_summary(rows: list[dict[str, Any]], *, exact_ms: float) -> None:
             f"cos_err={row['cosine_error']:.6f} "
             f"bytes={row['packed_bytes_per_vector']}"
         )
+        if row.get("graph_attention_ms_per_iter") is not None:
+            print(
+                f"  cuda_graph attention={row['graph_attention_ms_per_iter']:.4f}ms "
+                f"total={row['graph_total_ms_per_iter']:.4f}ms"
+            )
+        elif row.get("cuda_graph_error"):
+            print(f"  cuda_graph failed: {row['cuda_graph_error']}")
 
 
 def _parse_variants(raw: str) -> list[tuple[int, int]]:

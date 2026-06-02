@@ -190,3 +190,10 @@ The next slice should be:
    graphs/compile for fixed 1024 runs.
 4. Revisit cross+self composition only after adding a new control surface, such
    as per-prompt policy choice or a stricter image-quality gate.
+
+The CUDA graph probe is recorded in `docs/cuda-graph-probe-2026-06-02.md`.
+Fixed-shape graph replay gave a small synthetic gain for the current
+`packed_t` K7/no-QJL path: attention moved from `0.6849ms` to `0.6645ms`, while
+encode+attention moved from `0.8919ms` to `0.8768ms`. This is useful evidence,
+but too small to justify a production static-buffer graph cache before deeper
+packed attention or encode+attention kernel work.
