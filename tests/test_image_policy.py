@@ -51,6 +51,7 @@ def test_policy_processor_config_overrides_cli_defaults() -> None:
         packed_backend="auto",
         code_format="packed",
         norm_dtype="fp32",
+        dot_precision="ieee",
         steps=20,
     )
     policy = {
@@ -67,6 +68,7 @@ def test_policy_processor_config_overrides_cli_defaults() -> None:
             "packed_backend": "triton",
             "code_format": "byte",
             "norm_dtype": "fp16",
+            "dot_precision": "tf32",
             "cache_cross_attention": True,
         }
     }
@@ -84,6 +86,7 @@ def test_policy_processor_config_overrides_cli_defaults() -> None:
         "packed_backend": "triton",
         "code_format": "byte",
         "norm_dtype": "fp16",
+        "dot_precision": "tf32",
         "cache_cross_attention": True,
     }
 
@@ -102,6 +105,7 @@ def test_module_policy_can_override_processor_config() -> None:
         packed_backend="auto",
         code_format="packed",
         norm_dtype="fp32",
+        dot_precision="ieee",
         steps=20,
     )
     policy = {
@@ -136,6 +140,7 @@ def test_module_policy_can_override_processor_config() -> None:
         "packed_backend": "auto",
         "code_format": "packed",
         "norm_dtype": "fp32",
+        "dot_precision": "ieee",
         "cache_cross_attention": False,
     }
 
@@ -154,6 +159,7 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
         packed_backend="auto",
         code_format="packed",
         norm_dtype="fp32",
+        dot_precision="ieee",
         steps=20,
     )
     first = object()
@@ -176,6 +182,7 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
             "packed_backend": "auto",
             "code_format": "byte",
             "norm_dtype": "fp16",
+            "dot_precision": "tf32",
             "cache_cross_attention": True,
         },
         "quantized_modules": [
@@ -189,6 +196,7 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
                 "packed_backend": "torch",
                 "code_format": "packed",
                 "norm_dtype": "fp32",
+                "dot_precision": "ieee",
             },
         ],
     }
@@ -202,6 +210,7 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
     assert [entry["packed_backend"] for entry in metadata["modules"]] == ["auto", "torch"]
     assert [entry["code_format"] for entry in metadata["modules"]] == ["byte", "packed"]
     assert [entry["norm_dtype"] for entry in metadata["modules"]] == ["fp16", "fp32"]
+    assert [entry["dot_precision"] for entry in metadata["modules"]] == ["tf32", "ieee"]
     assert [entry["cache_cross_attention"] for entry in metadata["modules"]] == [True, True]
     assert [entry["index"] for entry in metadata["modules"]] == [0, 1]
     assert [entry["quantize_start_percent"] for entry in metadata["modules"]] == [None, 0.2]

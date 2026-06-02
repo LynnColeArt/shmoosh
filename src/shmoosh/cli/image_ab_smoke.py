@@ -92,6 +92,12 @@ def main() -> None:
         help="Stored dtype for packed-key norms.",
     )
     parser.add_argument(
+        "--dot-precision",
+        choices=["ieee", "tf32", "tf32x3"],
+        default="ieee",
+        help="Triton tl.dot input precision for packed attention.",
+    )
+    parser.add_argument(
         "--exact-keys",
         action="store_true",
         help="Leave K exact and only quantize values if --quantize-values is set.",
@@ -433,6 +439,7 @@ def _processor_config(
         "packed_backend": args.packed_backend,
         "code_format": args.code_format,
         "norm_dtype": args.norm_dtype,
+        "dot_precision": args.dot_precision,
         "cache_cross_attention": getattr(args, "cache_cross_attention", False),
     }
     if policy is None:
@@ -461,6 +468,7 @@ def _apply_processor_overrides(config: dict[str, Any], overrides: Any) -> None:
         ("packed_backend", "packed_backend"),
         ("code_format", "code_format"),
         ("norm_dtype", "norm_dtype"),
+        ("dot_precision", "dot_precision"),
         ("cache_cross_attention", "cache_cross_attention"),
     ):
         if source_key in overrides:
@@ -564,6 +572,7 @@ def _processor_metadata(config: dict[str, Any]) -> dict[str, Any]:
         "packed_backend": config["packed_backend"],
         "code_format": config["code_format"],
         "norm_dtype": config["norm_dtype"],
+        "dot_precision": config["dot_precision"],
         "cache_cross_attention": config["cache_cross_attention"],
     }
 

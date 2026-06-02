@@ -86,6 +86,11 @@ def main() -> None:
         choices=["fp32", "fp16"],
         default="fp32",
     )
+    parser.add_argument(
+        "--dot-precision",
+        choices=["ieee", "tf32", "tf32x3"],
+        default="ieee",
+    )
     parser.add_argument("--exact-keys", action="store_true")
     parser.add_argument("--quantize-values", action="store_true")
     parser.add_argument(

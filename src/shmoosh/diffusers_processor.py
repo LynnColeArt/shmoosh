@@ -225,6 +225,7 @@ class ShmooshAttnProcessor:
     packed_backend: str = "auto"
     code_format: Literal["packed", "byte", "packed_t"] = "packed"
     norm_dtype: Literal["fp32", "fp16"] = "fp32"
+    dot_precision: Literal["ieee", "tf32", "tf32x3"] = "ieee"
     cache_cross_attention: bool = False
     timing_recorder: ShmooshTimingRecorder | None = field(
         default=None,
@@ -269,6 +270,8 @@ class ShmooshAttnProcessor:
             raise ValueError("code_format must be one of: packed, byte, packed_t")
         if self.norm_dtype not in {"fp32", "fp16"}:
             raise ValueError("norm_dtype must be one of: fp32, fp16")
+        if self.dot_precision not in {"ieee", "tf32", "tf32x3"}:
+            raise ValueError("dot_precision must be one of: ieee, tf32, tf32x3")
 
     def __call__(
         self,
@@ -379,6 +382,7 @@ class ShmooshAttnProcessor:
                 "qjl_bits": self.qjl_bits,
                 "code_format": self.code_format,
                 "norm_dtype": self.norm_dtype,
+                "dot_precision": self.dot_precision,
                 "heads": heads,
                 "query_tokens": int(query.shape[2]),
                 "key_tokens": key_tokens,
@@ -414,6 +418,7 @@ class ShmooshAttnProcessor:
                     value,
                     resources=resources,
                     backend=self.packed_backend,
+                    dot_precision=self.dot_precision,
                 )
         else:
             key = attn.to_k(encoder_hidden_states)
@@ -574,6 +579,7 @@ class ShmooshAttnProcessor:
             value,
             resources=resources,
             backend=self.packed_backend,
+            dot_precision=self.dot_precision,
         )
         if target_device.type == "cuda":
             torch.cuda.synchronize(target_device)

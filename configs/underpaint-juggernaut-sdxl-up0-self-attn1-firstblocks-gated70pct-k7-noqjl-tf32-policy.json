@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "description": "Fast-mode exact-first 70% K7/no-QJL Shmoosh policy for the first self-attention transformer block in each up_blocks.0 attention group of the local Underpaint Juggernaut SDXL checkpoint. This variant keeps packed_t codes but uses Triton tf32 dot precision.",
+  "source": "docs/tf32-dot-precision-probe-2026-06-02.md",
+  "validation": {
+    "status": "fast_mode_suite_passed",
+    "candidate_reason": "TF32 dot precision roughly halves synthetic packed-attention time for K7/no-QJL packed_t self-attention, with a small image-fidelity cost on the hardest 1024 case.",
+    "validation_suite_1024": {
+      "output_dir": "captures/image-policy-suite-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-1024-packedt-tf32",
+      "case_count": 3,
+      "min_psnr_db": 51.70428009662071,
+      "mean_psnr_db": 54.17276064397364,
+      "max_mse": 0.000006754422299563885,
+      "mean_baseline_seconds": 9.98909510532394,
+      "mean_shmoosh_seconds": 9.34945491864346,
+      "mean_speedup": 1.068414703557209,
+      "mean_scheduled_quantized_ms": 2.528174,
+      "mean_packed_encode_ms": 0.787407,
+      "mean_packed_attention_ms": 0.72934
+    },
+    "note": "Keep the ieee packed_t policy as the high-fidelity default. Use this tf32 policy as an explicit 4070 fast mode until broader image and 3080 validation decide whether the PSNR tax is acceptable by default."
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "shmoosh_policy": {
+    "bits": 7,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 0,
+    "codebook_samples": 80000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false,
+    "attention_backend": "packed",
+    "packed_backend": "auto",
+    "code_format": "packed_t",
+    "norm_dtype": "fp32",
+    "dot_precision": "tf32"
+  },
+  "quantized_modules": [
+    {
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7
+    },
+    {
+      "name": "up_blocks.0.attentions.1.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7
+    },
+    {
+      "name": "up_blocks.0.attentions.2.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7
+    }
+  ],
+  "exact_modules": []
+}

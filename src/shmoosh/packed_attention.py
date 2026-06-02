@@ -30,6 +30,7 @@ def packed_key_attention_output(
     resources: PackedScoreResources | None = None,
     backend: Literal["auto", "torch", "triton"] = "auto",
     output_dtype: Any | None = None,
+    dot_precision: Literal["ieee", "tf32", "tf32x3"] = "ieee",
 ) -> Any:
     """Compute attention output from packed keys and exact values.
 
@@ -40,6 +41,8 @@ def packed_key_attention_output(
     _validate_query_value_block(query, value, block)
     if backend not in {"auto", "torch", "triton"}:
         raise ValueError("backend must be one of: auto, torch, triton")
+    if dot_precision not in {"ieee", "tf32", "tf32x3"}:
+        raise ValueError("dot_precision must be one of: ieee, tf32, tf32x3")
 
     target_dtype = query.dtype if output_dtype is None else output_dtype
     if backend == "torch":
@@ -57,6 +60,7 @@ def packed_key_attention_output(
             value,
             resources=resources,
             output_dtype=target_dtype,
+            dot_precision=dot_precision,
         )
     if backend == "triton" and not getattr(query, "is_cuda", False):
         raise ValueError("triton packed-key attention requires a CUDA query tensor")
@@ -107,6 +111,7 @@ def triton_packed_key_attention_output(
     output_dtype: Any | None = None,
     block_q: int = _FUSED_TRITON_QUERY_TILE,
     block_k: int = _FUSED_TRITON_KEY_TILE,
+    dot_precision: Literal["ieee", "tf32", "tf32x3"] = "ieee",
 ) -> Any:
     """Fused Triton packed-K attention.
 
@@ -116,6 +121,8 @@ def triton_packed_key_attention_output(
     """
 
     torch = _load_torch()
+    if dot_precision not in {"ieee", "tf32", "tf32x3"}:
+        raise ValueError("dot_precision must be one of: ieee, tf32, tf32x3")
     if (
         triton is None
         or _packed_key_attention_output_kernel is None
@@ -226,6 +233,7 @@ def triton_packed_key_attention_output(
             if effective_qjl_bits == 0
             else sqrt(pi / 2.0) / float(effective_qjl_bits)
         ),
+        DOT_INPUT_PRECISION=dot_precision,
         num_warps=4,
     )
     return output.reshape(batch, heads, q_tokens, head_dim).to(dtype=target_dtype)
@@ -247,6 +255,7 @@ def encode_and_attention_output(
     resources: PackedScoreResources | None = None,
     code_format: Literal["packed", "byte", "packed_t"] = "packed",
     norm_dtype: Literal["fp32", "fp16"] = "fp32",
+    dot_precision: Literal["ieee", "tf32", "tf32x3"] = "ieee",
 ) -> Any:
     """Encode K into a packed block, then run packed-K exact-V attention."""
 
@@ -269,6 +278,7 @@ def encode_and_attention_output(
         resources=resources,
         backend=backend,
         output_dtype=output_dtype,
+        dot_precision=dot_precision,
     )
 
 
@@ -438,6 +448,7 @@ if triton is not None and tl is not None:
         INV_SQRT_D: tl.constexpr,
         ATTENTION_SCALE: tl.constexpr,
         QJL_SCALE: tl.constexpr,
+        DOT_INPUT_PRECISION: tl.constexpr,
     ):
         q_offsets = tl.program_id(0) * BLOCK_Q + tl.arange(0, BLOCK_Q)
         head_like = tl.program_id(1)
@@ -459,7 +470,7 @@ if triton is not None and tl is not None:
             + dim_offsets[None, :] * HEAD_DIM
             + dim_offsets[:, None]
         )
-        q_rot = tl.dot(query_values, rotation_t, input_precision="ieee")
+        q_rot = tl.dot(query_values, rotation_t, input_precision=DOT_INPUT_PRECISION)
 
         if BYTE_CODES:
             code = tl.load(
@@ -521,7 +532,7 @@ if triton is not None and tl is not None:
             combined = code_byte | (next_byte << 8)
             code = (combined >> bit_offset) & ((1 << BITS) - 1)
         code_values = tl.load(codebook_ptr + code, mask=k_mask[None, :], other=0.0)
-        scores = tl.dot(q_rot, code_values, input_precision="ieee")
+        scores = tl.dot(q_rot, code_values, input_precision=DOT_INPUT_PRECISION)
 
         key_norms = tl.load(
             norms_ptr + head_like * key_tokens + k_offsets,
@@ -537,7 +548,11 @@ if triton is not None and tl is not None:
                 + qjl_offsets[None, :] * HEAD_DIM
                 + dim_offsets[:, None]
             )
-            q_proj = tl.dot(query_values, qjl_t, input_precision="ieee")
+            q_proj = tl.dot(
+                query_values,
+                qjl_t,
+                input_precision=DOT_INPUT_PRECISION,
+            )
             sign_byte_index = qjl_offsets[:, None] // 8
             sign_bit_offset = qjl_offsets[:, None] % 8
             sign_byte = tl.load(
@@ -550,7 +565,7 @@ if triton is not None and tl is not None:
             ).to(tl.uint32)
             sign_bit = (sign_byte >> sign_bit_offset) & 1
             signs = tl.where(sign_bit == 1, 1.0, -1.0)
-            correction = tl.dot(q_proj, signs, input_precision="ieee")
+            correction = tl.dot(q_proj, signs, input_precision=DOT_INPUT_PRECISION)
             residual_norm_values = tl.load(
                 residual_norms_ptr + head_like * key_tokens + k_offsets,
                 mask=k_mask,
@@ -568,7 +583,7 @@ if triton is not None and tl is not None:
             mask=k_mask[:, None],
             other=0.0,
         ).to(tl.float32)
-        output = tl.dot(weights, values, input_precision="ieee")
+        output = tl.dot(weights, values, input_precision=DOT_INPUT_PRECISION)
         tl.store(
             out_ptr
             + head_like * q_tokens * HEAD_DIM
@@ -604,6 +619,7 @@ if triton is not None and tl is not None:
         INV_SQRT_D: tl.constexpr,
         ATTENTION_SCALE: tl.constexpr,
         QJL_SCALE: tl.constexpr,
+        DOT_INPUT_PRECISION: tl.constexpr,
     ):
         q_offsets = tl.program_id(0) * BLOCK_Q + tl.arange(0, BLOCK_Q)
         head_like = tl.program_id(1)
@@ -625,7 +641,7 @@ if triton is not None and tl is not None:
             + dim_offsets[None, :] * HEAD_DIM
             + dim_offsets[:, None]
         )
-        q_rot = tl.dot(query_values, rotation_t, input_precision="ieee")
+        q_rot = tl.dot(query_values, rotation_t, input_precision=DOT_INPUT_PRECISION)
 
         if QJL_BITS > 0:
             qjl_offsets = tl.arange(0, QJL_BITS)
@@ -634,7 +650,11 @@ if triton is not None and tl is not None:
                 + qjl_offsets[None, :] * HEAD_DIM
                 + dim_offsets[:, None]
             )
-            q_proj = tl.dot(query_values, qjl_t, input_precision="ieee")
+            q_proj = tl.dot(
+                query_values,
+                qjl_t,
+                input_precision=DOT_INPUT_PRECISION,
+            )
         else:
             q_proj = tl.zeros((BLOCK_Q, 1), dtype=tl.float32)
 
@@ -709,7 +729,7 @@ if triton is not None and tl is not None:
                 mask=tile_k_mask[None, :],
                 other=0.0,
             )
-            scores = tl.dot(q_rot, code_values, input_precision="ieee")
+            scores = tl.dot(q_rot, code_values, input_precision=DOT_INPUT_PRECISION)
 
             key_norms = tl.load(
                 norms_ptr + head_like * key_tokens + tile_k_offsets,
@@ -731,7 +751,7 @@ if triton is not None and tl is not None:
                 ).to(tl.uint32)
                 sign_bit = (sign_byte >> sign_bit_offset) & 1
                 signs = tl.where(sign_bit == 1, 1.0, -1.0)
-                correction = tl.dot(q_proj, signs, input_precision="ieee")
+                correction = tl.dot(q_proj, signs, input_precision=DOT_INPUT_PRECISION)
                 residual_norm_values = tl.load(
                     residual_norms_ptr + head_like * key_tokens + tile_k_offsets,
                     mask=tile_k_mask,
@@ -759,7 +779,11 @@ if triton is not None and tl is not None:
                 mask=tile_k_mask[:, None],
                 other=0.0,
             ).to(tl.float32)
-            acc = acc * alpha + tl.dot(weights, values, input_precision="ieee")
+            acc = acc * alpha + tl.dot(
+                weights,
+                values,
+                input_precision=DOT_INPUT_PRECISION,
+            )
 
             m_i = m_new
 

@@ -205,3 +205,11 @@ It added opt-in `norm_dtype="fp16"`, reducing K7/no-QJL `packed_t` storage from
 (`0.7564ms` fp32 norms versus `0.7686ms` fp16 norms), so fp16 norms stay an
 experimental memory-format knob rather than the preferred self-attention
 default.
+
+The TF32 dot-precision probe is recorded in
+`docs/tf32-dot-precision-probe-2026-06-02.md`. It adds opt-in
+`dot_precision="tf32"` for fused packed attention. On the RTX 4070 synthetic
+K7/no-QJL `packed_t` 1024 self-attention trace, packed attention moved from
+`0.6232ms` to `0.2831ms`. The image suite stayed usable but paid a small
+quality tax (`52.07 dB` to `51.70 dB` minimum PSNR), so TF32 is now an explicit
+fast-mode policy rather than the high-fidelity default.

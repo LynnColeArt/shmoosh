@@ -61,6 +61,12 @@ def main() -> None:
         help="Stored dtype for packed-key norms.",
     )
     parser.add_argument(
+        "--dot-precision",
+        choices=["ieee", "tf32", "tf32x3"],
+        default="ieee",
+        help="Triton tl.dot input precision for packed attention.",
+    )
+    parser.add_argument(
         "--block-k",
         type=int,
         help="Optional explicit Triton streaming key tile for attention timing.",
@@ -160,6 +166,7 @@ def main() -> None:
                     "backend": args.backend,
                     "code_format": args.code_format,
                     "norm_dtype": args.norm_dtype,
+                    "dot_precision": args.dot_precision,
                     "block_q": args.block_q,
                     "block_k": args.block_k,
                     "error": f"{type(exc).__name__}: {exc}",
@@ -182,6 +189,7 @@ def main() -> None:
         "backend": args.backend,
         "code_format": args.code_format,
         "norm_dtype": args.norm_dtype,
+        "dot_precision": args.dot_precision,
         "block_q": args.block_q,
         "block_k": args.block_k,
         "cuda_graph": args.cuda_graph,
@@ -281,6 +289,7 @@ def _run_variant(
         "qjl_bits": qjl_bits,
         "code_format": block.code_format,
         "norm_dtype": getattr(block, "norm_dtype", "fp32"),
+        "dot_precision": args.dot_precision,
         "packed_bytes_per_vector": block.packed_bytes_per_vector,
         "compression_ratio_fp16": block.compression_ratio(dtype_bytes=2),
         "encode_ms_per_iter": encode_seconds * 1000 / args.iters,
@@ -343,6 +352,7 @@ def _attention_call(
             block,
             value,
             resources=resources,
+            dot_precision=args.dot_precision,
             **kwargs,
         )
     if args.code_format == "rotated":
@@ -359,6 +369,7 @@ def _attention_call(
         value,
         resources=resources,
         backend=args.backend,
+        dot_precision=args.dot_precision,
     )
 
 
@@ -454,6 +465,7 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         "qjl_bits",
         "code_format",
         "norm_dtype",
+        "dot_precision",
         "packed_bytes_per_vector",
         "compression_ratio_fp16",
         "encode_ms_per_iter",
@@ -493,6 +505,7 @@ def _print_summary(rows: list[dict[str, Any]], *, exact_ms: float) -> None:
         print(
             f"K{row['bits']} QJL{row['qjl_bits']} "
             f"{row['code_format']} norms={row['norm_dtype']} "
+            f"dot={row.get('dot_precision', 'ieee')} "
             f"total={row['total_ms_per_iter']:.4f}ms "
             f"encode={row['encode_ms_per_iter']:.4f}ms "
             f"attention={row['attention_ms_per_iter']:.4f}ms "

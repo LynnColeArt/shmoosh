@@ -264,3 +264,8 @@ def test_processor_validates_code_format() -> None:
 def test_processor_validates_norm_dtype() -> None:
     with pytest.raises(ValueError, match="norm_dtype"):
         ShmooshAttnProcessor(norm_dtype="neon")
+
+
+def test_processor_validates_dot_precision() -> None:
+    with pytest.raises(ValueError, match="dot_precision"):
+        ShmooshAttnProcessor(dot_precision="squint")
