@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from shmoosh.packed_attention import (
+    _select_streaming_query_tile,
     _select_streaming_key_tile,
     encode_and_attention_output,
     packed_key_attention_output,
@@ -129,6 +130,16 @@ def test_auto_streaming_key_tile_uses_wider_no_qjl_default() -> None:
     assert _select_streaming_key_tile(128, 0) == 32
     assert _select_streaming_key_tile(128, 64) == 16
     assert _select_streaming_key_tile(64, 0) == 64
+
+
+def test_k7_head64_uses_compact_streaming_tile() -> None:
+    key = torch.zeros(1, 1, 2, 64)
+    block = encode_packed_keys(key, bits=7, qjl_bits=0, seed=3, codebook_samples=512)
+
+    assert _select_streaming_query_tile(16, block, 0) == 64
+    assert _select_streaming_key_tile(128, 0, block=block) == 16
+    assert _select_streaming_query_tile(32, block, 0) == 32
+    assert _select_streaming_key_tile(32, 0, block=block) == 32
 
 
 @pytest.mark.skipif(

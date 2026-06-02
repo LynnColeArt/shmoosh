@@ -164,6 +164,12 @@ kernel was correctness-equivalent, but much slower than the generic packed
 kernel (`1.5081ms` attention versus `0.6445ms`), so it was not retained in
 runtime code. The likely culprit is register pressure and rebuilding the full
 code-value tile through many `where` operations.
+The streaming tile V2 slice is recorded in
+`docs/streaming-tile-v2-2026-06-02.md`. It promotes a narrow
+K7/no-QJL/head_dim=64 streaming tile choice from `BQ32/BK32` to `BQ64/BK16`.
+Synthetic wins were small and noisy, but the three-case 1024 image suite kept
+quality unchanged (`52.07 dB` minimum PSNR, `54.27 dB` mean PSNR) and moved mean
+packed attention from the prior fused-rotate `1.4519ms` per call to `1.3521ms`.
 
 The next slice should be:
 

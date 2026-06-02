@@ -109,6 +109,11 @@ lesson: native packed attention is still the right area, but the next attempt
 should improve reuse or layout instead of reconstructing the same
 `64 x BLOCK_K` code-value tile with more scalar control flow.
 
+The follow-up streaming-tile slice found a small practical improvement by
+changing only the launch shape for K7/no-QJL/head_dim=64:
+`BQ64/BK16` instead of `BQ32/BK32`. That result is recorded in
+`docs/streaming-tile-v2-2026-06-02.md`.
+
 ## Sources
 
 - AXELRAM: https://arxiv.org/abs/2604.02638

@@ -15,8 +15,10 @@ from shmoosh.packed_scores import (
 _FUSED_TRITON_SINGLE_KEY_TILE = 128
 _FUSED_TRITON_QUERY_TILE = 16
 _FUSED_TRITON_STREAMING_QUERY_TILE = 32
+_FUSED_TRITON_STREAMING_K7_HEAD64_QUERY_TILE = 64
 _FUSED_TRITON_STREAMING_QJL_KEY_TILE = 16
 _FUSED_TRITON_STREAMING_NO_QJL_KEY_TILE = 32
+_FUSED_TRITON_STREAMING_K7_HEAD64_KEY_TILE = 16
 _FUSED_TRITON_KEY_TILE = _FUSED_TRITON_SINGLE_KEY_TILE
 
 
@@ -176,9 +178,16 @@ def triton_packed_key_attention_output(
     key_tile = block_k
     kernel = _packed_key_attention_output_kernel
     if key_tokens > block_k:
-        if block_q == _FUSED_TRITON_QUERY_TILE:
-            query_tile = _FUSED_TRITON_STREAMING_QUERY_TILE
-        key_tile = _select_streaming_key_tile(block_k, effective_qjl_bits)
+        query_tile = _select_streaming_query_tile(
+            block_q,
+            block,
+            effective_qjl_bits,
+        )
+        key_tile = _select_streaming_key_tile(
+            block_k,
+            effective_qjl_bits,
+            block=block,
+        )
         kernel = _packed_key_attention_streaming_kernel
     grid = (triton.cdiv(q_tokens, query_tile), head_like)
     kernel[grid](
@@ -337,12 +346,43 @@ def _supports_fused_qjl_width(qjl_bits: int) -> bool:
     return qjl_bits == 0 or _is_power_of_two(qjl_bits)
 
 
-def _select_streaming_key_tile(block_k: int, effective_qjl_bits: int) -> int:
+def _select_streaming_query_tile(
+    block_q: int,
+    block: PackedKeyBlock,
+    effective_qjl_bits: int,
+) -> int:
+    if block_q != _FUSED_TRITON_QUERY_TILE:
+        return block_q
+    if _uses_k7_head64_compact_tile(block, effective_qjl_bits):
+        return _FUSED_TRITON_STREAMING_K7_HEAD64_QUERY_TILE
+    return _FUSED_TRITON_STREAMING_QUERY_TILE
+
+
+def _select_streaming_key_tile(
+    block_k: int,
+    effective_qjl_bits: int,
+    *,
+    block: PackedKeyBlock | None = None,
+) -> int:
     if block_k != _FUSED_TRITON_KEY_TILE:
         return block_k
+    if block is not None and _uses_k7_head64_compact_tile(block, effective_qjl_bits):
+        return _FUSED_TRITON_STREAMING_K7_HEAD64_KEY_TILE
     if effective_qjl_bits:
         return _FUSED_TRITON_STREAMING_QJL_KEY_TILE
     return _FUSED_TRITON_STREAMING_NO_QJL_KEY_TILE
+
+
+def _uses_k7_head64_compact_tile(
+    block: PackedKeyBlock,
+    effective_qjl_bits: int,
+) -> bool:
+    return (
+        effective_qjl_bits == 0
+        and block.code_format == "packed"
+        and block.bits == 7
+        and block.head_dim == 64
+    )
 
 
 def _is_power_of_two(value: int) -> bool:
