@@ -75,6 +75,63 @@ def test_packed_processor_matches_reference_for_k_only_policy() -> None:
     assert len(packed._packed_resource_cache) == 1
 
 
+def test_static_head_topk_full_budget_matches_packed_processor() -> None:
+    generator = torch.Generator().manual_seed(4)
+    hidden_states = torch.randn(1, 5, 16, generator=generator)
+    attn = _FakeAttention(heads=2)
+    packed = ShmooshAttnProcessor(
+        bits=4,
+        qjl_bits=0,
+        seed=3,
+        quantize_values=False,
+        codebook_samples=512,
+        attention_backend="packed",
+        packed_backend="torch",
+    )
+    sparse = ShmooshAttnProcessor(
+        bits=4,
+        qjl_bits=0,
+        seed=3,
+        quantize_values=False,
+        codebook_samples=512,
+        attention_backend="packed",
+        packed_backend="torch",
+        static_head_topk_budgets=[5, 5],
+    )
+
+    packed_output = packed(attn, hidden_states)
+    sparse_output = sparse(attn, hidden_states)
+
+    assert torch.allclose(sparse_output, packed_output, atol=2e-5, rtol=1e-5)
+
+
+def test_static_head_topk_processor_records_sparse_attention_phase() -> None:
+    generator = torch.Generator().manual_seed(5)
+    hidden_states = torch.randn(1, 5, 16, generator=generator)
+    attn = _FakeAttention(heads=2)
+    recorder = ShmooshTimingRecorder()
+    processor = ShmooshAttnProcessor(
+        bits=4,
+        qjl_bits=0,
+        seed=3,
+        quantize_values=False,
+        codebook_samples=512,
+        attention_backend="packed",
+        packed_backend="torch",
+        static_head_topk_budgets=[2, 3],
+        timing_recorder=recorder,
+        timing_module="fake.attn1",
+        step_state=DenoisingStepState(current_step=12, total_steps=20),
+    )
+
+    output = processor(attn, hidden_states)
+
+    assert output.shape == hidden_states.shape
+    phases = [record["phase"] for record in recorder.records]
+    assert "packed_sparse_attention" in phases
+    assert "packed_attention" not in phases
+
+
 def test_byte_code_packed_processor_matches_reference_for_k_only_policy() -> None:
     generator = torch.Generator().manual_seed(10)
     hidden_states = torch.randn(1, 5, 16, generator=generator)
@@ -262,6 +319,30 @@ def test_processor_validates_packed_block_tiles() -> None:
         ShmooshAttnProcessor(packed_block_q=12)
     with pytest.raises(ValueError, match="packed_block_k"):
         ShmooshAttnProcessor(packed_block_k=24)
+
+
+def test_processor_validates_static_head_topk_budgets() -> None:
+    with pytest.raises(ValueError, match="must not be empty"):
+        ShmooshAttnProcessor(static_head_topk_budgets=[])
+    with pytest.raises(ValueError, match="values must be positive"):
+        ShmooshAttnProcessor(static_head_topk_budgets=[1, 0])
+
+
+def test_processor_rejects_static_head_topk_head_mismatch() -> None:
+    hidden_states = torch.zeros(1, 5, 16)
+    attn = _FakeAttention(heads=2)
+    processor = ShmooshAttnProcessor(
+        bits=4,
+        qjl_bits=0,
+        quantize_values=False,
+        codebook_samples=512,
+        attention_backend="packed",
+        packed_backend="torch",
+        static_head_topk_budgets=[2],
+    )
+
+    with pytest.raises(ValueError, match="length must match attention heads"):
+        processor(attn, hidden_states)
 
 
 def test_processor_validates_code_format() -> None:

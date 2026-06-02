@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from shmoosh.packed_attention import packed_key_attention_output
 from shmoosh.packed_keys import encode_packed_keys
-from shmoosh.packed_scores import score_resources_from_codec
+from shmoosh.packed_scores import packed_key_scores, score_resources_from_codec
 from shmoosh.quantization import ShmooshCodec
 from shmoosh.runtime_attention import torch_shmoosh_attention
 
@@ -233,6 +233,7 @@ class ShmooshAttnProcessor:
     qjl_dot_precision: Literal["ieee", "tf32", "tf32x3"] | None = None
     packed_block_q: int | None = None
     packed_block_k: int | None = None
+    static_head_topk_budgets: list[int] | tuple[int, ...] | None = None
     cache_cross_attention: bool = False
     timing_recorder: ShmooshTimingRecorder | None = field(
         default=None,
@@ -297,6 +298,13 @@ class ShmooshAttnProcessor:
                 raise ValueError(
                     f"{name} must be a power-of-two integer greater than or equal to 16"
                 )
+        if self.static_head_topk_budgets is not None:
+            budgets = tuple(int(value) for value in self.static_head_topk_budgets)
+            if not budgets:
+                raise ValueError("static_head_topk_budgets must not be empty")
+            if any(value <= 0 for value in budgets):
+                raise ValueError("static_head_topk_budgets values must be positive")
+            object.__setattr__(self, "static_head_topk_budgets", budgets)
 
     def __call__(
         self,
@@ -412,6 +420,11 @@ class ShmooshAttnProcessor:
                 **self._dot_precision_payload(),
                 "packed_block_q": self.packed_block_q,
                 "packed_block_k": self.packed_block_k,
+                "static_head_topk_budgets": (
+                    list(self.static_head_topk_budgets)
+                    if self.static_head_topk_budgets is not None
+                    else None
+                ),
                 "heads": heads,
                 "query_tokens": int(query.shape[2]),
                 "key_tokens": key_tokens,
@@ -441,18 +454,31 @@ class ShmooshAttnProcessor:
                         key_tokens=key_tokens,
                         heads=heads,
                     )
-            with self._timing_span("packed_attention", query, packed_metadata):
-                hidden_states = packed_key_attention_output(
+            if self.static_head_topk_budgets is None:
+                with self._timing_span("packed_attention", query, packed_metadata):
+                    hidden_states = packed_key_attention_output(
+                        query,
+                        block,
+                        value,
+                        resources=resources,
+                        backend=self.packed_backend,
+                        dot_precision=self.dot_precision,
+                        block_q=self.packed_block_q,
+                        block_k=self.packed_block_k,
+                        **self._dot_precision_kwargs(),
+                    )
+            else:
+                with self._timing_span(
+                    "packed_sparse_attention",
                     query,
-                    block,
-                    value,
-                    resources=resources,
-                    backend=self.packed_backend,
-                    dot_precision=self.dot_precision,
-                    block_q=self.packed_block_q,
-                    block_k=self.packed_block_k,
-                    **self._dot_precision_kwargs(),
-                )
+                    packed_metadata,
+                ):
+                    hidden_states = self._packed_static_head_topk_attention(
+                        query,
+                        block,
+                        value,
+                        resources=resources,
+                    )
         else:
             key = attn.to_k(encoder_hidden_states)
             value = attn.to_v(encoder_hidden_states)
@@ -572,6 +598,7 @@ class ShmooshAttnProcessor:
         self,
         *,
         head_dim: int,
+        heads: int = 1,
         device: Any,
         dtype: Any | None = None,
     ) -> bool:
@@ -591,12 +618,12 @@ class ShmooshAttnProcessor:
         )
         def _warm_shape(*, query_tokens: int, key_tokens: int) -> None:
             query = torch.zeros(
-                (1, 1, query_tokens, head_dim),
+                (1, heads, query_tokens, head_dim),
                 device=target_device,
                 dtype=target_dtype,
             )
             key = torch.zeros(
-                (1, 1, key_tokens, head_dim),
+                (1, heads, key_tokens, head_dim),
                 device=target_device,
                 dtype=target_dtype,
             )
@@ -613,17 +640,25 @@ class ShmooshAttnProcessor:
                 code_format=self.code_format,
                 norm_dtype=self.norm_dtype,
             )
-            packed_key_attention_output(
-                query,
-                block,
-                value,
-                resources=resources,
-                backend=self.packed_backend,
-                dot_precision=self.dot_precision,
-                block_q=self.packed_block_q,
-                block_k=self.packed_block_k,
-                **self._dot_precision_kwargs(),
-            )
+            if self.static_head_topk_budgets is None:
+                packed_key_attention_output(
+                    query,
+                    block,
+                    value,
+                    resources=resources,
+                    backend=self.packed_backend,
+                    dot_precision=self.dot_precision,
+                    block_q=self.packed_block_q,
+                    block_k=self.packed_block_k,
+                    **self._dot_precision_kwargs(),
+                )
+            else:
+                self._packed_static_head_topk_attention(
+                    query,
+                    block,
+                    value,
+                    resources=resources,
+                )
 
         _warm_shape(query_tokens=1, key_tokens=1)
         if target_device.type == "cuda" and self.packed_backend in {"auto", "triton"}:
@@ -636,6 +671,51 @@ class ShmooshAttnProcessor:
         if target_device.type == "cuda":
             torch.cuda.synchronize(target_device)
         return True
+
+    def _packed_static_head_topk_attention(
+        self,
+        query: Any,
+        block: Any,
+        value: Any,
+        *,
+        resources: Any,
+    ) -> Any:
+        torch = _load_torch()
+        budgets = self._resolved_static_head_topk_budgets(query, block)
+        scores = packed_key_scores(
+            query,
+            block,
+            resources=resources,
+            backend=self.packed_backend,
+        )
+        mask = torch.zeros_like(scores, dtype=torch.bool)
+        for head, budget in enumerate(budgets):
+            head_scores = scores[:, head : head + 1, :, :]
+            indices = torch.topk(head_scores, k=budget, dim=-1).indices
+            mask[:, head : head + 1, :, :].scatter_(-1, indices, True)
+        masked_scores = scores.masked_fill(~mask, float("-inf"))
+        weights = torch.softmax(masked_scores / math.sqrt(block.head_dim), dim=-1)
+        output = torch.einsum(
+            "bhqt,bhtd->bhqd",
+            weights,
+            value.to(device=query.device, dtype=torch.float32),
+        )
+        return output.to(dtype=query.dtype)
+
+    def _resolved_static_head_topk_budgets(
+        self,
+        query: Any,
+        block: Any,
+    ) -> tuple[int, ...]:
+        if self.static_head_topk_budgets is None:
+            raise RuntimeError("static_head_topk_budgets is not configured")
+        heads = int(query.shape[1])
+        key_tokens = int(block.shape[2])
+        if len(self.static_head_topk_budgets) != heads:
+            raise ValueError(
+                "static_head_topk_budgets length must match attention heads"
+            )
+        return tuple(min(int(value), key_tokens) for value in self.static_head_topk_budgets)
 
     def _dot_precision_kwargs(self) -> dict[str, str]:
         return {
@@ -730,6 +810,7 @@ def warm_packed_attention_processor(
     head_dim = _attention_head_dim(attn)
     return shmoosh_processor.warm_packed_attention(
         head_dim=head_dim,
+        heads=int(getattr(attn, "heads")),
         device=device,
         dtype=dtype,
     )

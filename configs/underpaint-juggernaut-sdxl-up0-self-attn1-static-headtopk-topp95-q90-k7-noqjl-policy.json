@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "description": "Static per-head top-k sparse packed-K policy calibrated from top-p 0.95 q=0.90 kept-counts for the late 70% 1024 self-attention path in the local Underpaint Juggernaut SDXL checkpoint.",
+  "source": {
+    "calibration": "captures/attention-budget-calibration/1024-self-policies-2026-06-02.json",
+    "notes": "docs/attention-budget-calibration-2026-06-02.md",
+    "mapping": {
+      "down_blocks.1.attn1 calibration": "up_blocks.0.attentions.0.transformer_blocks.0.attn1",
+      "up_blocks.1.attn1 calibration": [
+        "up_blocks.0.attentions.1.transformer_blocks.0.attn1",
+        "up_blocks.0.attentions.2.transformer_blocks.0.attn1"
+      ]
+    }
+  },
+  "validation": {
+    "status": "image_ab_borderline_quality_reference",
+    "candidate_reason": "Conservative static sparse oracle reference. Uses larger q=0.90 per-head budgets derived from top-p 0.95 kept-counts.",
+    "validation_suite_1024": {
+      "output_dir": "captures/image-policy-compare-juggernaut-static-headtopk-1024-20260602",
+      "case_count": 3,
+      "min_psnr_db": 47.296006442512414,
+      "mean_psnr_db": 49.458626674528084,
+      "mean_packed_sparse_attention_ms": 14.159554529383229,
+      "note": "Best static sparse candidate in this slice, but still trails the packed K7 control by roughly 4.8 dB minimum PSNR."
+    }
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "shmoosh_policy": {
+    "bits": 7,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 0,
+    "codebook_samples": 80000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false,
+    "attention_backend": "packed",
+    "packed_backend": "auto",
+    "packed_block_q": 64,
+    "packed_block_k": 32,
+    "code_format": "packed_t",
+    "norm_dtype": "fp32",
+    "key_encode_backend": "split",
+    "dot_precision": "ieee",
+    "score_dot_precision": "tf32",
+    "value_dot_precision": "tf32"
+  },
+  "quantized_modules": [
+    {
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7,
+      "static_head_topk_budgets": [
+        460,
+        495,
+        573,
+        761,
+        519,
+        598,
+        833,
+        821,
+        553,
+        576,
+        451,
+        489,
+        565,
+        760,
+        516,
+        599,
+        832,
+        820,
+        548,
+        575
+      ]
+    },
+    {
+      "name": "up_blocks.0.attentions.1.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7,
+      "static_head_topk_budgets": [
+        666,
+        372,
+        432,
+        528,
+        720,
+        757,
+        713,
+        475,
+        649,
+        362,
+        496,
+        368,
+        400,
+        375,
+        643,
+        669,
+        500,
+        445,
+        581,
+        342
+      ]
+    },
+    {
+      "name": "up_blocks.0.attentions.2.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7,
+      "static_head_topk_budgets": [
+        666,
+        372,
+        432,
+        528,
+        720,
+        757,
+        713,
+        475,
+        649,
+        362,
+        496,
+        368,
+        400,
+        375,
+        643,
+        669,
+        500,
+        445,
+        581,
+        342
+      ]
+    }
+  ],
+  "exact_modules": []
+}
