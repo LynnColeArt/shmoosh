@@ -225,6 +225,7 @@ class ShmooshAttnProcessor:
     packed_backend: str = "auto"
     code_format: Literal["packed", "byte", "packed_t"] = "packed"
     norm_dtype: Literal["fp32", "fp16"] = "fp32"
+    key_encode_backend: Literal["split", "fused", "auto"] = "split"
     dot_precision: Literal["ieee", "tf32", "tf32x3"] = "ieee"
     rotation_dot_precision: Literal["ieee", "tf32", "tf32x3"] | None = None
     score_dot_precision: Literal["ieee", "tf32", "tf32x3"] | None = None
@@ -274,6 +275,8 @@ class ShmooshAttnProcessor:
             raise ValueError("code_format must be one of: packed, byte, packed_t")
         if self.norm_dtype not in {"fp32", "fp16"}:
             raise ValueError("norm_dtype must be one of: fp32, fp16")
+        if self.key_encode_backend not in {"split", "fused", "auto"}:
+            raise ValueError("key_encode_backend must be one of: split, fused, auto")
         if self.dot_precision not in {"ieee", "tf32", "tf32x3"}:
             raise ValueError("dot_precision must be one of: ieee, tf32, tf32x3")
         for name, value in (
@@ -394,6 +397,7 @@ class ShmooshAttnProcessor:
                 "qjl_bits": self.qjl_bits,
                 "code_format": self.code_format,
                 "norm_dtype": self.norm_dtype,
+                "key_encode_backend": self.key_encode_backend,
                 "dot_precision": self.dot_precision,
                 **self._dot_precision_payload(),
                 "heads": heads,
@@ -414,6 +418,7 @@ class ShmooshAttnProcessor:
                         timing_recorder=self.timing_recorder,
                         timing_module=self.timing_module,
                         step_state=self.step_state,
+                        key_encode_backend=self.key_encode_backend,
                         code_format=self.code_format,
                         norm_dtype=self.norm_dtype,
                     )
@@ -534,6 +539,7 @@ class ShmooshAttnProcessor:
             self.codebook_samples,
             self.code_format,
             self.norm_dtype,
+            self.key_encode_backend,
         )
 
     def _record_cross_cache(self, hit: bool) -> None:
@@ -584,6 +590,7 @@ class ShmooshAttnProcessor:
             codebook_samples=self.codebook_samples,
             codec=codec,
             resources=resources,
+            key_encode_backend=self.key_encode_backend,
             code_format=self.code_format,
             norm_dtype=self.norm_dtype,
         )

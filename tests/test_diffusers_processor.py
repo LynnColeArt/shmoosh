@@ -266,6 +266,11 @@ def test_processor_validates_norm_dtype() -> None:
         ShmooshAttnProcessor(norm_dtype="neon")
 
 
+def test_processor_validates_key_encode_backend() -> None:
+    with pytest.raises(ValueError, match="key_encode_backend"):
+        ShmooshAttnProcessor(key_encode_backend="wishful")
+
+
 def test_processor_validates_dot_precision() -> None:
     with pytest.raises(ValueError, match="dot_precision"):
         ShmooshAttnProcessor(dot_precision="squint")

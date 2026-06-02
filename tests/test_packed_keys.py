@@ -6,6 +6,7 @@ from math import sqrt
 
 from shmoosh.packed_keys import (
     _pack_bits,
+    _triton_norm_rotate_bucketize_pack_keys,
     _triton_rotate_bucketize_pack_codes,
     _triton_bucketize_pack_codes,
     _unpack_bits,
@@ -231,6 +232,53 @@ def test_triton_bucketize_pack_codes_matches_torch(bits: int) -> None:
 
     assert torch.equal(packed, expected)
     assert torch.equal(_unpack_bits(packed, bits=bits, value_count=64), indices)
+
+
+@pytest.mark.skipif(
+    triton is None or not torch.cuda.is_available(),
+    reason="CUDA Triton is not available",
+)
+@pytest.mark.parametrize("code_format", ["packed", "packed_t"])
+def test_triton_norm_rotate_bucketize_pack_keys_matches_torch(
+    code_format: str,
+) -> None:
+    generator = torch.Generator(device="cuda").manual_seed(13)
+    keys = torch.randn(
+        1,
+        2,
+        17,
+        64,
+        generator=generator,
+        device="cuda",
+        dtype=torch.float16,
+    )
+    codec = ShmooshCodec(dim=64, bits=7, qjl_bits=0, seed=3, codebook_samples=512)
+    resources = score_resources_from_codec(codec, device=keys.device)
+    keys_f = keys.detach().to(dtype=torch.float32)
+    expected_norms = torch.linalg.vector_norm(keys_f, dim=-1)
+    safe_norms = torch.where(
+        expected_norms > 0,
+        expected_norms,
+        torch.ones_like(expected_norms),
+    )
+    unit = keys_f / safe_norms.unsqueeze(-1)
+    normalized = (torch.matmul(unit, resources.rotation.T) * sqrt(64)).contiguous()
+    indices = torch.bucketize(normalized, resources.boundaries).to(dtype=torch.int64)
+    expected_codes = _pack_bits(indices, bits=7)
+    if code_format == "packed_t":
+        expected_codes = expected_codes.transpose(-1, -2).contiguous()
+
+    codes, norms = _triton_norm_rotate_bucketize_pack_keys(
+        keys,
+        resources.rotation,
+        resources.boundaries,
+        bits=7,
+        code_format=code_format,
+        norm_dtype="fp32",
+    )
+
+    assert torch.equal(codes, expected_codes)
+    assert torch.allclose(norms, expected_norms)
 
 
 @pytest.mark.skipif(

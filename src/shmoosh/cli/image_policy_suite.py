@@ -87,6 +87,11 @@ def main() -> None:
         default="fp32",
     )
     parser.add_argument(
+        "--key-encode-backend",
+        choices=["split", "fused", "auto"],
+        default="split",
+    )
+    parser.add_argument(
         "--dot-precision",
         choices=["ieee", "tf32", "tf32x3"],
         default="ieee",

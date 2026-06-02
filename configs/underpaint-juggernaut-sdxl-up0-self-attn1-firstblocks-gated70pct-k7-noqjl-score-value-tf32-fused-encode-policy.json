@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "description": "Opt-in fused-encode variant of the balanced exact-first 70% K7/no-QJL Shmoosh policy for the first self-attention transformer block in each up_blocks.0 attention group of the local Underpaint Juggernaut SDXL checkpoint. This variant keeps Q rotation at ieee precision while using tf32 for packed score and attention-value dots, and uses the fused K7/head64/no-QJL key encode kernel.",
+  "source": "docs/fused-norm-encode-2026-06-02.md",
+  "validation": {
+    "status": "speed_tradeoff_suite_passed",
+    "candidate_reason": "Fused key encode cuts synthetic and image packed-encode time for K7/no-QJL packed_t, but gives up the score+value split's hard-case reading-nook PSNR recovery. Keep this as an opt-in speed tradeoff.",
+    "synthetic_1024": {
+      "split_output_dir": "captures/self-attention-variant-bench-k7-packedt-score-value-tf32-split-after-gate-seq-20260602",
+      "fused_output_dir": "captures/self-attention-variant-bench-k7-packedt-score-value-tf32-fused-after-gate-seq-20260602",
+      "split_encode_ms": 0.253189979121089,
+      "fused_encode_ms": 0.13563964050263166,
+      "split_total_ms": 0.5837536230683327,
+      "fused_total_ms": 0.583112402819097,
+      "split_relative_rmse": 0.024059209998514224,
+      "fused_relative_rmse": 0.024059649438191704
+    },
+    "same_process_score_value_compare_1024": {
+      "output_dir": "captures/image-policy-compare-juggernaut-up0-self-attn1-k7-noqjl-1024-score-value-fused-encode-20260602",
+      "case_count": 3,
+      "min_psnr_db": 51.87471689639713,
+      "mean_psnr_db": 54.17653811824194,
+      "mean_speedup": 1.1264542169502318,
+      "mean_scheduled_quantized_ms": 2.8287141445886204,
+      "mean_packed_encode_ms": 0.5505761105774178,
+      "mean_packed_attention_ms": 0.8081502789907433,
+      "split_min_psnr_db": 52.07878234744321,
+      "split_mean_speedup": 1.0600978301949493,
+      "split_mean_scheduled_quantized_ms": 3.323078491828508,
+      "split_mean_packed_encode_ms": 0.9955643607234513,
+      "comparison_note": "Fused encode improves speed phases but drops reading-nook from 52.08 dB to 51.87 dB versus split encode."
+    },
+    "note": "Use only when the speed gain is worth the hard-case PSNR tradeoff. The balanced 4070 policy remains the split-encode score+value TF32 policy."
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "shmoosh_policy": {
+    "bits": 7,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 0,
+    "codebook_samples": 80000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false,
+    "attention_backend": "packed",
+    "packed_backend": "auto",
+    "code_format": "packed_t",
+    "norm_dtype": "fp32",
+    "key_encode_backend": "fused",
+    "dot_precision": "ieee",
+    "score_dot_precision": "tf32",
+    "value_dot_precision": "tf32"
+  },
+  "quantized_modules": [
+    {
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7
+    },
+    {
+      "name": "up_blocks.0.attentions.1.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7
+    },
+    {
+      "name": "up_blocks.0.attentions.2.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7
+    }
+  ],
+  "exact_modules": []
+}

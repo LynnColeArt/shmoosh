@@ -61,6 +61,12 @@ def main() -> None:
         help="Stored dtype for packed-key norms.",
     )
     parser.add_argument(
+        "--key-encode-backend",
+        choices=["split", "fused", "auto"],
+        default="split",
+        help="Packed-key encode path for K7/head64/no-QJL experiments.",
+    )
+    parser.add_argument(
         "--dot-precision",
         choices=["ieee", "tf32", "tf32x3"],
         default="ieee",
@@ -186,6 +192,7 @@ def main() -> None:
                     "backend": args.backend,
                     "code_format": args.code_format,
                     "norm_dtype": args.norm_dtype,
+                    "key_encode_backend": args.key_encode_backend,
                     "dot_precision": args.dot_precision,
                     **_dot_precision_payload(args),
                     "block_q": args.block_q,
@@ -210,6 +217,7 @@ def main() -> None:
         "backend": args.backend,
         "code_format": args.code_format,
         "norm_dtype": args.norm_dtype,
+        "key_encode_backend": args.key_encode_backend,
         "dot_precision": args.dot_precision,
         **_dot_precision_payload(args),
         "block_q": args.block_q,
@@ -264,6 +272,7 @@ def _run_variant(
             codebook_samples=args.codebook_samples,
             codec=codec,
             resources=resources,
+            key_encode_backend=args.key_encode_backend,
             code_format=args.code_format,
             norm_dtype=args.norm_dtype,
         )
@@ -311,6 +320,7 @@ def _run_variant(
         "qjl_bits": qjl_bits,
         "code_format": block.code_format,
         "norm_dtype": getattr(block, "norm_dtype", "fp32"),
+        "key_encode_backend": args.key_encode_backend,
         "dot_precision": args.dot_precision,
         **_dot_precision_payload(args),
         "packed_bytes_per_vector": block.packed_bytes_per_vector,
@@ -490,6 +500,7 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         "qjl_bits",
         "code_format",
         "norm_dtype",
+        "key_encode_backend",
         "dot_precision",
         "rotation_dot_precision",
         "score_dot_precision",
@@ -534,6 +545,7 @@ def _print_summary(rows: list[dict[str, Any]], *, exact_ms: float) -> None:
         print(
             f"K{row['bits']} QJL{row['qjl_bits']} "
             f"{row['code_format']} norms={row['norm_dtype']} "
+            f"encode_backend={row['key_encode_backend']} "
             f"dot={_dot_precision_label(row)} "
             f"total={row['total_ms_per_iter']:.4f}ms "
             f"encode={row['encode_ms_per_iter']:.4f}ms "

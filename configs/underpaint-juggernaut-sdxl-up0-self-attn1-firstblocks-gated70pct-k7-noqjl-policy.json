@@ -179,7 +179,9 @@
     "quantize_values": false,
     "attention_backend": "packed",
     "packed_backend": "auto",
-    "code_format": "packed_t"
+    "code_format": "packed_t",
+    "norm_dtype": "fp32",
+    "key_encode_backend": "split"
   },
   "quantized_modules": [
     {

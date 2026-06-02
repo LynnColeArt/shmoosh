@@ -48,6 +48,7 @@
     "packed_backend": "auto",
     "code_format": "packed_t",
     "norm_dtype": "fp32",
+    "key_encode_backend": "split",
     "dot_precision": "tf32"
   },
   "quantized_modules": [

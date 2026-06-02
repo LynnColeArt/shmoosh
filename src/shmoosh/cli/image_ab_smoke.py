@@ -92,6 +92,12 @@ def main() -> None:
         help="Stored dtype for packed-key norms.",
     )
     parser.add_argument(
+        "--key-encode-backend",
+        choices=["split", "fused", "auto"],
+        default="split",
+        help="Packed-key encode path. split preserves the multi-stage default.",
+    )
+    parser.add_argument(
         "--dot-precision",
         choices=["ieee", "tf32", "tf32x3"],
         default="ieee",
@@ -459,6 +465,7 @@ def _processor_config(
         "packed_backend": args.packed_backend,
         "code_format": args.code_format,
         "norm_dtype": args.norm_dtype,
+        "key_encode_backend": getattr(args, "key_encode_backend", "split"),
         "dot_precision": args.dot_precision,
         "rotation_dot_precision": args.rotation_dot_precision,
         "score_dot_precision": args.score_dot_precision,
@@ -492,6 +499,7 @@ def _apply_processor_overrides(config: dict[str, Any], overrides: Any) -> None:
         ("packed_backend", "packed_backend"),
         ("code_format", "code_format"),
         ("norm_dtype", "norm_dtype"),
+        ("key_encode_backend", "key_encode_backend"),
         ("dot_precision", "dot_precision"),
         ("rotation_dot_precision", "rotation_dot_precision"),
         ("score_dot_precision", "score_dot_precision"),
@@ -600,6 +608,7 @@ def _processor_metadata(config: dict[str, Any]) -> dict[str, Any]:
         "packed_backend": config["packed_backend"],
         "code_format": config["code_format"],
         "norm_dtype": config["norm_dtype"],
+        "key_encode_backend": config["key_encode_backend"],
         "dot_precision": config["dot_precision"],
         "rotation_dot_precision": config["rotation_dot_precision"]
         or config["dot_precision"],

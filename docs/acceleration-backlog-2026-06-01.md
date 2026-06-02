@@ -227,3 +227,11 @@ balanced RTX 4070 fast-mode candidate, with mean packed attention at
 `52.08 dB`. Whole-image speed remains close to baseline on warm cases, so the
 next speed work should reduce remaining scheduled/encode overhead or use this
 runner to compare broader policy layers.
+
+The fused norm/rotate/bucketize/pack encode slice is recorded in
+`docs/fused-norm-encode-2026-06-02.md`. It adds `key_encode_backend` as an
+explicit policy knob. The fused K7/head64/no-QJL path writes `packed_t` directly
+and cuts score+value image packed encode from `0.9956ms` to `0.5506ms`, moving
+scheduled quantized time from `3.3231ms` to `2.8287ms`. The cost is hard-case
+quality: reading-nook drops from `52.08 dB` to `51.87 dB`. Keep split encode as
+the balanced default; keep fused encode as an opt-in speed tradeoff.

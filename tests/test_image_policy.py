@@ -55,6 +55,7 @@ def test_policy_processor_config_overrides_cli_defaults() -> None:
         packed_backend="auto",
         code_format="packed",
         norm_dtype="fp32",
+        key_encode_backend="split",
         dot_precision="ieee",
         rotation_dot_precision=None,
         score_dot_precision=None,
@@ -76,6 +77,7 @@ def test_policy_processor_config_overrides_cli_defaults() -> None:
             "packed_backend": "triton",
             "code_format": "byte",
             "norm_dtype": "fp16",
+            "key_encode_backend": "fused",
             "dot_precision": "tf32",
             "score_dot_precision": "ieee",
             "cache_cross_attention": True,
@@ -95,6 +97,7 @@ def test_policy_processor_config_overrides_cli_defaults() -> None:
         "packed_backend": "triton",
         "code_format": "byte",
         "norm_dtype": "fp16",
+        "key_encode_backend": "fused",
         "dot_precision": "tf32",
         "rotation_dot_precision": None,
         "score_dot_precision": "ieee",
@@ -118,6 +121,7 @@ def test_module_policy_can_override_processor_config() -> None:
         packed_backend="auto",
         code_format="packed",
         norm_dtype="fp32",
+        key_encode_backend="split",
         dot_precision="ieee",
         rotation_dot_precision=None,
         score_dot_precision=None,
@@ -157,6 +161,7 @@ def test_module_policy_can_override_processor_config() -> None:
         "packed_backend": "auto",
         "code_format": "packed",
         "norm_dtype": "fp32",
+        "key_encode_backend": "split",
         "dot_precision": "ieee",
         "rotation_dot_precision": None,
         "score_dot_precision": None,
@@ -180,6 +185,7 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
         packed_backend="auto",
         code_format="packed",
         norm_dtype="fp32",
+        key_encode_backend="split",
         dot_precision="ieee",
         rotation_dot_precision=None,
         score_dot_precision=None,
@@ -207,6 +213,7 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
             "packed_backend": "auto",
             "code_format": "byte",
             "norm_dtype": "fp16",
+            "key_encode_backend": "auto",
             "dot_precision": "tf32",
             "score_dot_precision": "ieee",
             "cache_cross_attention": True,
@@ -222,6 +229,7 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
                 "packed_backend": "torch",
                 "code_format": "packed",
                 "norm_dtype": "fp32",
+                "key_encode_backend": "fused",
                 "dot_precision": "ieee",
                 "value_dot_precision": "tf32",
             },
@@ -237,6 +245,7 @@ def test_policy_processor_metadata_reports_mixed_modules() -> None:
     assert [entry["packed_backend"] for entry in metadata["modules"]] == ["auto", "torch"]
     assert [entry["code_format"] for entry in metadata["modules"]] == ["byte", "packed"]
     assert [entry["norm_dtype"] for entry in metadata["modules"]] == ["fp16", "fp32"]
+    assert [entry["key_encode_backend"] for entry in metadata["modules"]] == ["auto", "fused"]
     assert [entry["dot_precision"] for entry in metadata["modules"]] == ["tf32", "ieee"]
     assert [entry["score_dot_precision"] for entry in metadata["modules"]] == ["ieee", "ieee"]
     assert [entry["value_dot_precision"] for entry in metadata["modules"]] == ["tf32", "tf32"]

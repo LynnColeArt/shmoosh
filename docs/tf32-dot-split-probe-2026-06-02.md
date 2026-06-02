@@ -132,3 +132,8 @@ configs/underpaint-juggernaut-sdxl-up0-self-attn1-firstblocks-gated70pct-k7-noqj
 
 The useful finding is structural: the small all-TF32 quality tax appears to come
 mostly from Q rotation precision, not from the score/value dots alone.
+
+Fused encode follow-up is recorded in
+`docs/fused-norm-encode-2026-06-02.md`. It speeds the score+value policy but
+gives up some hard-case reading-nook PSNR, so this policy remains pinned to
+`key_encode_backend="split"` as the balanced default.

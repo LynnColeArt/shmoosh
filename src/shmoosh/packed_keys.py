@@ -152,6 +152,7 @@ def encode_packed_keys(
     timing_recorder: Any | None = None,
     timing_module: str | None = None,
     step_state: Any | None = None,
+    key_encode_backend: Literal["split", "fused", "auto"] = "split",
     code_format: Literal["packed", "byte", "packed_t"] = "packed",
     norm_dtype: Literal["fp32", "fp16"] = "fp32",
 ) -> PackedKeyBlock:
@@ -166,6 +167,8 @@ def encode_packed_keys(
         raise ValueError("code_format must be one of: packed, byte, packed_t")
     if norm_dtype not in {"fp32", "fp16"}:
         raise ValueError("norm_dtype must be one of: fp32, fp16")
+    if key_encode_backend not in {"split", "fused", "auto"}:
+        raise ValueError("key_encode_backend must be one of: split, fused, auto")
 
     device = keys.device
     batch, heads, tokens, head_dim = (int(size) for size in keys.shape)
@@ -200,6 +203,7 @@ def encode_packed_keys(
             timing_recorder=timing_recorder,
             timing_module=timing_module,
             step_state=step_state,
+            key_encode_backend=key_encode_backend,
             code_format=code_format,
             norm_dtype=norm_dtype,
         )
@@ -257,6 +261,7 @@ def _encode_packed_keys_torch(
     timing_recorder: Any | None = None,
     timing_module: str | None = None,
     step_state: Any | None = None,
+    key_encode_backend: Literal["split", "fused", "auto"] = "split",
     code_format: Literal["packed", "byte", "packed_t"] = "packed",
     norm_dtype: Literal["fp32", "fp16"] = "fp32",
 ) -> PackedKeyBlock:
@@ -273,102 +278,146 @@ def _encode_packed_keys_torch(
         raise ValueError("score resources codebook does not match key bit depth")
     if boundaries.numel() != codebook.numel() - 1:
         raise ValueError("score resources boundaries do not match key bit depth")
+    if key_encode_backend not in {"split", "fused", "auto"}:
+        raise ValueError("key_encode_backend must be one of: split, fused, auto")
 
     timing_metadata = {
         "bits": bits,
         "qjl_bits": qjl_bits,
         "code_format": code_format,
         "norm_dtype": norm_dtype,
+        "key_encode_backend": key_encode_backend,
         "head_dim": head_dim,
         "key_tokens": int(keys.shape[2]),
         "heads": int(keys.shape[1]),
+        "fused_norm_rotate_bucketize_pack": False,
         "fused_bucketize_pack": False,
         "fused_rotate_bucketize_pack": False,
     }
-    with _timing_span(
-        timing_recorder,
-        "encode_normalize",
-        keys,
-        timing_module,
-        step_state,
-        timing_metadata,
-    ):
-        keys_f = keys.detach().to(dtype=torch.float32)
-        if keys_f.data_ptr() == keys.data_ptr():
-            keys_f = keys_f.clone()
-        raw_keys_f = keys_f if qjl_bits == 0 else keys_f.clone()
-        norms = torch.linalg.vector_norm(keys_f, dim=-1)
-        safe_norms = torch.where(norms > 0, norms, torch.ones_like(norms))
-        keys_f.div_(safe_norms.unsqueeze(-1))
-    with _timing_span(
-        timing_recorder,
-        "encode_rotate_bucketize",
-        keys,
-        timing_module,
-        step_state,
-        timing_metadata,
-    ):
-        indices = None
-        codes = None
-        if _can_use_triton_rotate_bucketize_pack(
-            keys_f,
+    indices = None
+    codes = None
+    raw_keys_f = None
+    use_fused_norm_encode = (
+        key_encode_backend in {"fused", "auto"}
+        and _can_use_triton_norm_rotate_bucketize_pack(
+            keys,
             rotation,
             boundaries,
             bits=bits,
             qjl_bits=qjl_bits,
             code_format=code_format,
+        )
+    )
+    if key_encode_backend == "fused" and not use_fused_norm_encode:
+        raise ValueError(
+            "fused key encode requires CUDA K7/no-QJL packed or packed_t keys "
+            "with head_dim=64"
+        )
+    if use_fused_norm_encode:
+        with _timing_span(
+            timing_recorder,
+            "encode_norm_rotate_bucketize_pack",
+            keys,
+            timing_module,
+            step_state,
+            timing_metadata,
         ):
+            timing_metadata["fused_norm_rotate_bucketize_pack"] = True
             timing_metadata["fused_rotate_bucketize_pack"] = True
             timing_metadata["fused_bucketize_pack"] = True
-            codes = _triton_rotate_bucketize_pack_codes(
-                keys_f.contiguous(),
+            codes, norms = _triton_norm_rotate_bucketize_pack_keys(
+                keys.contiguous(),
                 rotation,
                 boundaries,
                 bits=bits,
+                code_format=code_format,
+                norm_dtype=norm_dtype,
             )
-        else:
-            rotated = torch.matmul(keys_f, rotation.T)
-            normalized = rotated * sqrt(head_dim)
-            normalized = normalized.contiguous()
-            if _can_use_triton_bucketize_pack(
-                normalized,
+    else:
+        with _timing_span(
+            timing_recorder,
+            "encode_normalize",
+            keys,
+            timing_module,
+            step_state,
+            timing_metadata,
+        ):
+            keys_f = keys.detach().to(dtype=torch.float32)
+            if keys_f.data_ptr() == keys.data_ptr():
+                keys_f = keys_f.clone()
+            raw_keys_f = keys_f if qjl_bits == 0 else keys_f.clone()
+            norms = torch.linalg.vector_norm(keys_f, dim=-1)
+            safe_norms = torch.where(norms > 0, norms, torch.ones_like(norms))
+            keys_f.div_(safe_norms.unsqueeze(-1))
+        with _timing_span(
+            timing_recorder,
+            "encode_rotate_bucketize",
+            keys,
+            timing_module,
+            step_state,
+            timing_metadata,
+        ):
+            if _can_use_triton_rotate_bucketize_pack(
+                keys_f,
+                rotation,
                 boundaries,
                 bits=bits,
                 qjl_bits=qjl_bits,
                 code_format=code_format,
             ):
+                timing_metadata["fused_rotate_bucketize_pack"] = True
                 timing_metadata["fused_bucketize_pack"] = True
-                codes = _triton_bucketize_pack_codes(
-                    normalized,
+                codes = _triton_rotate_bucketize_pack_codes(
+                    keys_f.contiguous(),
+                    rotation,
                     boundaries,
                     bits=bits,
                 )
             else:
-                indices = torch.bucketize(
+                rotated = torch.matmul(keys_f, rotation.T)
+                normalized = rotated * sqrt(head_dim)
+                normalized = normalized.contiguous()
+                if _can_use_triton_bucketize_pack(
                     normalized,
                     boundaries,
-                ).to(dtype=torch.int64)
-    with _timing_span(
-        timing_recorder,
-        "encode_pack_codes",
-        keys,
-        timing_module,
-        step_state,
-        timing_metadata,
-    ):
-        if codes is None:
-            codes = _encode_codes(
-                indices,
-                bits=bits,
-                code_format=code_format,
-                validate=False,
-            )
-        elif code_format == "packed_t":
-            codes = _transpose_packed_codes(codes)
+                    bits=bits,
+                    qjl_bits=qjl_bits,
+                    code_format=code_format,
+                ):
+                    timing_metadata["fused_bucketize_pack"] = True
+                    codes = _triton_bucketize_pack_codes(
+                        normalized,
+                        boundaries,
+                        bits=bits,
+                    )
+                else:
+                    indices = torch.bucketize(
+                        normalized,
+                        boundaries,
+                    ).to(dtype=torch.int64)
+        with _timing_span(
+            timing_recorder,
+            "encode_pack_codes",
+            keys,
+            timing_module,
+            step_state,
+            timing_metadata,
+        ):
+            if codes is None:
+                codes = _encode_codes(
+                    indices,
+                    bits=bits,
+                    code_format=code_format,
+                    validate=False,
+                )
+            elif code_format == "packed_t":
+                codes = _transpose_packed_codes(codes)
 
     residual_signs = None
     residual_norms = None
     if qjl_bits > 0:
+        if raw_keys_f is None:
+            raise RuntimeError("QJL residuals require the non-fused key encode path")
         with _timing_span(
             timing_recorder,
             "encode_residual_project",
@@ -622,6 +671,86 @@ def _can_use_triton_rotate_bucketize_pack(
     )
 
 
+def _can_use_triton_norm_rotate_bucketize_pack(
+    keys: Any,
+    rotation: Any,
+    boundaries: Any,
+    *,
+    bits: int,
+    qjl_bits: int,
+    code_format: str,
+) -> bool:
+    head_dim = int(keys.shape[-1])
+    return (
+        triton is not None
+        and _norm_rotate_bucketize_pack_keys_kernel is not None
+        and getattr(keys, "is_cuda", False)
+        and getattr(rotation, "is_cuda", False)
+        and getattr(boundaries, "is_cuda", False)
+        and qjl_bits == 0
+        and code_format in {"packed", "packed_t"}
+        and bits == 7
+        and head_dim == 64
+    )
+
+
+def _triton_norm_rotate_bucketize_pack_keys(
+    keys: Any,
+    rotation: Any,
+    boundaries: Any,
+    *,
+    bits: int,
+    code_format: str,
+    norm_dtype: str,
+) -> tuple[Any, Any]:
+    torch = _load_torch()
+    if triton is None or _norm_rotate_bucketize_pack_keys_kernel is None:
+        raise RuntimeError("triton is required for fused normalize/rotate/bucketize/pack")
+    if bits != 7:
+        raise ValueError("fused normalize/rotate/bucketize/pack currently supports K7")
+    if code_format not in {"packed", "packed_t"}:
+        raise ValueError("fused normalize/rotate/bucketize/pack requires packed codes")
+    head_dim = int(keys.shape[-1])
+    if head_dim != 64:
+        raise ValueError("fused normalize/rotate/bucketize/pack currently requires head_dim=64")
+
+    batch, heads, tokens, _head_dim = (int(size) for size in keys.shape)
+    vector_count = batch * heads * tokens
+    code_bytes = _ceil_div(head_dim * bits, 8)
+    codes_shape = (
+        (batch, heads, code_bytes, tokens)
+        if code_format == "packed_t"
+        else (batch, heads, tokens, code_bytes)
+    )
+    codes = torch.empty(codes_shape, dtype=torch.uint8, device=keys.device)
+    norms = torch.empty(
+        (batch, heads, tokens),
+        dtype=_norm_torch_dtype(torch, norm_dtype),
+        device=keys.device,
+    )
+    keys_2d = keys.reshape(vector_count, head_dim)
+    codes_flat = codes.reshape(-1)
+    norms_flat = norms.reshape(vector_count)
+    _norm_rotate_bucketize_pack_keys_kernel[(triton.cdiv(vector_count, 16),)](
+        keys_2d,
+        rotation,
+        boundaries,
+        codes_flat,
+        norms_flat,
+        vector_count,
+        tokens,
+        BITS=bits,
+        BLOCK_VECTORS=16,
+        HEAD_DIM=head_dim,
+        CODE_BYTES=code_bytes,
+        BOUNDARY_COUNT=(1 << bits) - 1,
+        SQRT_D=sqrt(head_dim),
+        TRANSPOSED_CODES=code_format == "packed_t",
+        num_warps=4,
+    )
+    return codes, norms
+
+
 def _triton_rotate_bucketize_pack_codes(
     unit_keys: Any,
     rotation: Any,
@@ -793,6 +922,122 @@ def _load_torch():
 
 
 if triton is not None and tl is not None:
+
+    @triton.jit
+    def _norm_rotate_bucketize_pack_keys_kernel(
+        keys_ptr,
+        rotation_ptr,
+        boundaries_ptr,
+        codes_ptr,
+        norms_ptr,
+        vector_count,
+        key_tokens,
+        BITS: tl.constexpr,
+        BLOCK_VECTORS: tl.constexpr,
+        HEAD_DIM: tl.constexpr,
+        CODE_BYTES: tl.constexpr,
+        BOUNDARY_COUNT: tl.constexpr,
+        SQRT_D: tl.constexpr,
+        TRANSPOSED_CODES: tl.constexpr,
+    ):
+        block_id = tl.program_id(0)
+        vector_offsets = block_id * BLOCK_VECTORS + tl.arange(0, BLOCK_VECTORS)
+        src_offsets = tl.arange(0, HEAD_DIM)
+        dst_offsets = tl.arange(0, HEAD_DIM)
+        vector_mask = vector_offsets < vector_count
+
+        raw_values = tl.load(
+            keys_ptr + vector_offsets[:, None] * HEAD_DIM + src_offsets[None, :],
+            mask=vector_mask[:, None],
+            other=0.0,
+        ).to(tl.float32)
+        norm_sq = tl.sum(raw_values * raw_values, axis=1)
+        norm = tl.sqrt(norm_sq)
+        safe_norm = tl.where(norm > 0.0, norm, 1.0)
+        unit_values = raw_values / safe_norm[:, None]
+        tl.store(norms_ptr + vector_offsets, norm, mask=vector_mask)
+
+        rotation_t = tl.load(
+            rotation_ptr + dst_offsets[None, :] * HEAD_DIM + src_offsets[:, None]
+        )
+        rotated = tl.dot(unit_values, rotation_t, input_precision="ieee") * SQRT_D
+
+        low = tl.full((BLOCK_VECTORS, HEAD_DIM), 0, dtype=tl.int32)
+        high = tl.full((BLOCK_VECTORS, HEAD_DIM), BOUNDARY_COUNT, dtype=tl.int32)
+        for _ in range(BITS):
+            mid = (low + high) // 2
+            boundary = tl.load(
+                boundaries_ptr + mid,
+                mask=mid < BOUNDARY_COUNT,
+                other=float("inf"),
+            )
+            go_right = rotated > boundary
+            low = tl.where(go_right, mid + 1, low)
+            high = tl.where(go_right, high, mid)
+
+        head_like_offsets = vector_offsets // key_tokens
+        token_offsets = vector_offsets - head_like_offsets * key_tokens
+        for group_id in tl.static_range(0, 8):
+            base_dim = group_id * 8
+            base_byte = group_id * 7
+            c0 = tl.sum(
+                tl.where(dst_offsets[None, :] == base_dim + 0, low, 0),
+                axis=1,
+            )
+            c1 = tl.sum(
+                tl.where(dst_offsets[None, :] == base_dim + 1, low, 0),
+                axis=1,
+            )
+            c2 = tl.sum(
+                tl.where(dst_offsets[None, :] == base_dim + 2, low, 0),
+                axis=1,
+            )
+            c3 = tl.sum(
+                tl.where(dst_offsets[None, :] == base_dim + 3, low, 0),
+                axis=1,
+            )
+            c4 = tl.sum(
+                tl.where(dst_offsets[None, :] == base_dim + 4, low, 0),
+                axis=1,
+            )
+            c5 = tl.sum(
+                tl.where(dst_offsets[None, :] == base_dim + 5, low, 0),
+                axis=1,
+            )
+            c6 = tl.sum(
+                tl.where(dst_offsets[None, :] == base_dim + 6, low, 0),
+                axis=1,
+            )
+            c7 = tl.sum(
+                tl.where(dst_offsets[None, :] == base_dim + 7, low, 0),
+                axis=1,
+            )
+
+            b0 = c0 | ((c1 & 0x01) << 7)
+            b1 = (c1 >> 1) | ((c2 & 0x03) << 6)
+            b2 = (c2 >> 2) | ((c3 & 0x07) << 5)
+            b3 = (c3 >> 3) | ((c4 & 0x0F) << 4)
+            b4 = (c4 >> 4) | ((c5 & 0x1F) << 3)
+            b5 = (c5 >> 5) | ((c6 & 0x3F) << 2)
+            b6 = (c6 >> 6) | (c7 << 1)
+
+            if TRANSPOSED_CODES:
+                out_base = (
+                    head_like_offsets * key_tokens * CODE_BYTES
+                    + (base_byte * key_tokens)
+                    + token_offsets
+                )
+                byte_stride = key_tokens
+            else:
+                out_base = vector_offsets * CODE_BYTES + base_byte
+                byte_stride = 1
+            tl.store(codes_ptr + out_base + byte_stride * 0, b0.to(tl.uint8), mask=vector_mask)
+            tl.store(codes_ptr + out_base + byte_stride * 1, b1.to(tl.uint8), mask=vector_mask)
+            tl.store(codes_ptr + out_base + byte_stride * 2, b2.to(tl.uint8), mask=vector_mask)
+            tl.store(codes_ptr + out_base + byte_stride * 3, b3.to(tl.uint8), mask=vector_mask)
+            tl.store(codes_ptr + out_base + byte_stride * 4, b4.to(tl.uint8), mask=vector_mask)
+            tl.store(codes_ptr + out_base + byte_stride * 5, b5.to(tl.uint8), mask=vector_mask)
+            tl.store(codes_ptr + out_base + byte_stride * 6, b6.to(tl.uint8), mask=vector_mask)
 
     @triton.jit
     def _rotate_bucketize_pack_codes_kernel(
@@ -986,5 +1231,6 @@ if triton is not None and tl is not None:
             tl.store(output_ptr + out_base + 13, b13.to(tl.uint8))
 
 else:  # pragma: no cover
+    _norm_rotate_bucketize_pack_keys_kernel = None
     _rotate_bucketize_pack_codes_kernel = None
     _bucketize_pack_codes_kernel = None

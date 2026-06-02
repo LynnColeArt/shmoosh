@@ -277,6 +277,7 @@ def encode_and_attention_output(
     output_dtype: Any | None = None,
     codec: Any | None = None,
     resources: PackedScoreResources | None = None,
+    key_encode_backend: Literal["split", "fused", "auto"] = "split",
     code_format: Literal["packed", "byte", "packed_t"] = "packed",
     norm_dtype: Literal["fp32", "fp16"] = "fp32",
     dot_precision: DotPrecision = "ieee",
@@ -296,6 +297,7 @@ def encode_and_attention_output(
         lloyd_iters=lloyd_iters,
         codec=codec,
         resources=resources,
+        key_encode_backend=key_encode_backend,
         code_format=code_format,
         norm_dtype=norm_dtype,
     )
