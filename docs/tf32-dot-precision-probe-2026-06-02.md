@@ -105,3 +105,9 @@ configs/underpaint-juggernaut-sdxl-up0-self-attn1-firstblocks-gated70pct-k7-noqj
 The next useful validation is broader image coverage, then a 3080 check once
 that hardware is available. If the quality tax remains bounded, `tf32` may
 become the practical 4070 fast policy.
+
+Follow-up precision splitting is recorded in
+`docs/tf32-dot-split-probe-2026-06-02.md`. The best balanced candidate keeps Q
+rotation at `ieee` precision while using `tf32` for score and value dots. It
+recovers reading-nook quality to `52.08 dB`, but is slower than all-TF32 and
+needs another timing pass before promotion.

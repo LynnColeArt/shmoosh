@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "description": "Balanced exact-first 70% K7/no-QJL Shmoosh policy for the first self-attention transformer block in each up_blocks.0 attention group of the local Underpaint Juggernaut SDXL checkpoint. This variant keeps Q rotation at ieee precision while using tf32 for packed score and attention-value dots.",
+  "source": "docs/tf32-dot-split-probe-2026-06-02.md",
+  "validation": {
+    "status": "balanced_candidate_suite_passed",
+    "candidate_reason": "All-TF32 is faster but pays a small reading-nook PSNR tax. This split keeps Q rotation at ieee precision while using tf32 for the score and value dots, recovering the hard-case PSNR in the 1024 suite.",
+    "validation_suite_1024": {
+      "output_dir": "captures/image-policy-suite-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-1024-packedt-score-value-tf32",
+      "case_count": 3,
+      "min_psnr_db": 52.07878234744321,
+      "mean_psnr_db": 54.160336587856875,
+      "max_mse": 0.0000062000327790156,
+      "mean_baseline_seconds": 13.672874582543349,
+      "mean_shmoosh_seconds": 10.836912426321456,
+      "mean_speedup": 1.2616946640016864,
+      "mean_scheduled_quantized_ms": 3.906516,
+      "mean_packed_encode_ms": 1.27629,
+      "mean_packed_attention_ms": 0.998178
+    },
+    "note": "The image-run whole-image speedup is inflated by a slow first baseline pass, and scheduled quantized timing was noisy. Treat this as a quality-recovery candidate, not as a promoted fast default."
+  },
+  "default": {
+    "quantize_keys": false,
+    "quantize_values": false
+  },
+  "shmoosh_policy": {
+    "bits": 7,
+    "key_bits": null,
+    "value_bits": null,
+    "qjl_bits": 0,
+    "codebook_samples": 80000,
+    "processor_seed": 11,
+    "quantize_keys": true,
+    "quantize_values": false,
+    "attention_backend": "packed",
+    "packed_backend": "auto",
+    "code_format": "packed_t",
+    "norm_dtype": "fp32",
+    "dot_precision": "ieee",
+    "score_dot_precision": "tf32",
+    "value_dot_precision": "tf32"
+  },
+  "quantized_modules": [
+    {
+      "name": "up_blocks.0.attentions.0.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7
+    },
+    {
+      "name": "up_blocks.0.attentions.1.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7
+    },
+    {
+      "name": "up_blocks.0.attentions.2.transformer_blocks.0.attn1",
+      "quantize_start_percent": 0.7
+    }
+  ],
+  "exact_modules": []
+}

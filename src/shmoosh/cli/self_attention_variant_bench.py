@@ -67,6 +67,26 @@ def main() -> None:
         help="Triton tl.dot input precision for packed attention.",
     )
     parser.add_argument(
+        "--rotation-dot-precision",
+        choices=["ieee", "tf32", "tf32x3"],
+        help="Override Triton tl.dot input precision for Q rotation.",
+    )
+    parser.add_argument(
+        "--score-dot-precision",
+        choices=["ieee", "tf32", "tf32x3"],
+        help="Override Triton tl.dot input precision for codebook score dots.",
+    )
+    parser.add_argument(
+        "--value-dot-precision",
+        choices=["ieee", "tf32", "tf32x3"],
+        help="Override Triton tl.dot input precision for attention-weight/V dots.",
+    )
+    parser.add_argument(
+        "--qjl-dot-precision",
+        choices=["ieee", "tf32", "tf32x3"],
+        help="Override Triton tl.dot input precision for QJL residual dots.",
+    )
+    parser.add_argument(
         "--block-k",
         type=int,
         help="Optional explicit Triton streaming key tile for attention timing.",
@@ -167,6 +187,7 @@ def main() -> None:
                     "code_format": args.code_format,
                     "norm_dtype": args.norm_dtype,
                     "dot_precision": args.dot_precision,
+                    **_dot_precision_payload(args),
                     "block_q": args.block_q,
                     "block_k": args.block_k,
                     "error": f"{type(exc).__name__}: {exc}",
@@ -190,6 +211,7 @@ def main() -> None:
         "code_format": args.code_format,
         "norm_dtype": args.norm_dtype,
         "dot_precision": args.dot_precision,
+        **_dot_precision_payload(args),
         "block_q": args.block_q,
         "block_k": args.block_k,
         "cuda_graph": args.cuda_graph,
@@ -290,6 +312,7 @@ def _run_variant(
         "code_format": block.code_format,
         "norm_dtype": getattr(block, "norm_dtype", "fp32"),
         "dot_precision": args.dot_precision,
+        **_dot_precision_payload(args),
         "packed_bytes_per_vector": block.packed_bytes_per_vector,
         "compression_ratio_fp16": block.compression_ratio(dtype_bytes=2),
         "encode_ms_per_iter": encode_seconds * 1000 / args.iters,
@@ -353,6 +376,7 @@ def _attention_call(
             value,
             resources=resources,
             dot_precision=args.dot_precision,
+            **_dot_precision_kwargs(args),
             **kwargs,
         )
     if args.code_format == "rotated":
@@ -370,6 +394,7 @@ def _attention_call(
         resources=resources,
         backend=args.backend,
         dot_precision=args.dot_precision,
+        **_dot_precision_kwargs(args),
     )
 
 
@@ -466,6 +491,10 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         "code_format",
         "norm_dtype",
         "dot_precision",
+        "rotation_dot_precision",
+        "score_dot_precision",
+        "value_dot_precision",
+        "qjl_dot_precision",
         "packed_bytes_per_vector",
         "compression_ratio_fp16",
         "encode_ms_per_iter",
@@ -505,7 +534,7 @@ def _print_summary(rows: list[dict[str, Any]], *, exact_ms: float) -> None:
         print(
             f"K{row['bits']} QJL{row['qjl_bits']} "
             f"{row['code_format']} norms={row['norm_dtype']} "
-            f"dot={row.get('dot_precision', 'ieee')} "
+            f"dot={_dot_precision_label(row)} "
             f"total={row['total_ms_per_iter']:.4f}ms "
             f"encode={row['encode_ms_per_iter']:.4f}ms "
             f"attention={row['attention_ms_per_iter']:.4f}ms "
@@ -543,6 +572,48 @@ def _parse_variants(raw: str) -> list[tuple[int, int]]:
     if not variants:
         raise SystemExit("--variants must contain at least one variant")
     return variants
+
+
+def _dot_precision_kwargs(args: argparse.Namespace) -> dict[str, str]:
+    return {
+        key: value
+        for key, value in {
+            "rotation_dot_precision": args.rotation_dot_precision,
+            "score_dot_precision": args.score_dot_precision,
+            "value_dot_precision": args.value_dot_precision,
+            "qjl_dot_precision": args.qjl_dot_precision,
+        }.items()
+        if value is not None
+    }
+
+
+def _dot_precision_payload(args: argparse.Namespace) -> dict[str, str]:
+    return {
+        "rotation_dot_precision": args.rotation_dot_precision or args.dot_precision,
+        "score_dot_precision": args.score_dot_precision or args.dot_precision,
+        "value_dot_precision": args.value_dot_precision or args.dot_precision,
+        "qjl_dot_precision": (
+            args.qjl_dot_precision
+            or args.score_dot_precision
+            or args.dot_precision
+        ),
+    }
+
+
+def _dot_precision_label(row: dict[str, Any]) -> str:
+    base = row.get("dot_precision", "ieee")
+    split = {
+        "rot": row.get("rotation_dot_precision", base),
+        "score": row.get("score_dot_precision", base),
+        "value": row.get("value_dot_precision", base),
+        "qjl": row.get("qjl_dot_precision", row.get("score_dot_precision", base)),
+    }
+    if all(value == base for value in split.values()):
+        return str(base)
+    return (
+        f"{base}/rot={split['rot']},score={split['score']},"
+        f"value={split['value']},qjl={split['qjl']}"
+    )
 
 
 def _load_torch():

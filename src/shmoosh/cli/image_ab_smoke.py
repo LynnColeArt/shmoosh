@@ -98,6 +98,26 @@ def main() -> None:
         help="Triton tl.dot input precision for packed attention.",
     )
     parser.add_argument(
+        "--rotation-dot-precision",
+        choices=["ieee", "tf32", "tf32x3"],
+        help="Override Triton tl.dot input precision for Q rotation.",
+    )
+    parser.add_argument(
+        "--score-dot-precision",
+        choices=["ieee", "tf32", "tf32x3"],
+        help="Override Triton tl.dot input precision for codebook score dots.",
+    )
+    parser.add_argument(
+        "--value-dot-precision",
+        choices=["ieee", "tf32", "tf32x3"],
+        help="Override Triton tl.dot input precision for attention-weight/V dots.",
+    )
+    parser.add_argument(
+        "--qjl-dot-precision",
+        choices=["ieee", "tf32", "tf32x3"],
+        help="Override Triton tl.dot input precision for QJL residual dots.",
+    )
+    parser.add_argument(
         "--exact-keys",
         action="store_true",
         help="Leave K exact and only quantize values if --quantize-values is set.",
@@ -440,6 +460,10 @@ def _processor_config(
         "code_format": args.code_format,
         "norm_dtype": args.norm_dtype,
         "dot_precision": args.dot_precision,
+        "rotation_dot_precision": args.rotation_dot_precision,
+        "score_dot_precision": args.score_dot_precision,
+        "value_dot_precision": args.value_dot_precision,
+        "qjl_dot_precision": args.qjl_dot_precision,
         "cache_cross_attention": getattr(args, "cache_cross_attention", False),
     }
     if policy is None:
@@ -469,6 +493,10 @@ def _apply_processor_overrides(config: dict[str, Any], overrides: Any) -> None:
         ("code_format", "code_format"),
         ("norm_dtype", "norm_dtype"),
         ("dot_precision", "dot_precision"),
+        ("rotation_dot_precision", "rotation_dot_precision"),
+        ("score_dot_precision", "score_dot_precision"),
+        ("value_dot_precision", "value_dot_precision"),
+        ("qjl_dot_precision", "qjl_dot_precision"),
         ("cache_cross_attention", "cache_cross_attention"),
     ):
         if source_key in overrides:
@@ -573,6 +601,15 @@ def _processor_metadata(config: dict[str, Any]) -> dict[str, Any]:
         "code_format": config["code_format"],
         "norm_dtype": config["norm_dtype"],
         "dot_precision": config["dot_precision"],
+        "rotation_dot_precision": config["rotation_dot_precision"]
+        or config["dot_precision"],
+        "score_dot_precision": config["score_dot_precision"]
+        or config["dot_precision"],
+        "value_dot_precision": config["value_dot_precision"]
+        or config["dot_precision"],
+        "qjl_dot_precision": config["qjl_dot_precision"]
+        or config["score_dot_precision"]
+        or config["dot_precision"],
         "cache_cross_attention": config["cache_cross_attention"],
     }
 

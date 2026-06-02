@@ -213,3 +213,11 @@ K7/no-QJL `packed_t` 1024 self-attention trace, packed attention moved from
 `0.6232ms` to `0.2831ms`. The image suite stayed usable but paid a small
 quality tax (`52.07 dB` to `51.70 dB` minimum PSNR), so TF32 is now an explicit
 fast-mode policy rather than the high-fidelity default.
+
+The TF32 dot-split probe is recorded in
+`docs/tf32-dot-split-probe-2026-06-02.md`. It adds separate rotation, score,
+value, and QJL precision controls. Synthetic timing showed score+value TF32 as
+the strongest quality-preserving split (`0.3904ms` packed attention versus
+`0.3394ms` all-TF32 and `0.6232ms` ieee). The 1024 image suite recovered
+reading-nook quality to `52.08 dB`, but image timing was noisy, so keep it as a
+balanced candidate pending rerun.

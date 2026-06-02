@@ -91,6 +91,22 @@ def main() -> None:
         choices=["ieee", "tf32", "tf32x3"],
         default="ieee",
     )
+    parser.add_argument(
+        "--rotation-dot-precision",
+        choices=["ieee", "tf32", "tf32x3"],
+    )
+    parser.add_argument(
+        "--score-dot-precision",
+        choices=["ieee", "tf32", "tf32x3"],
+    )
+    parser.add_argument(
+        "--value-dot-precision",
+        choices=["ieee", "tf32", "tf32x3"],
+    )
+    parser.add_argument(
+        "--qjl-dot-precision",
+        choices=["ieee", "tf32", "tf32x3"],
+    )
     parser.add_argument("--exact-keys", action="store_true")
     parser.add_argument("--quantize-values", action="store_true")
     parser.add_argument(

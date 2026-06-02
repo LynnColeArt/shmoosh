@@ -269,3 +269,8 @@ def test_processor_validates_norm_dtype() -> None:
 def test_processor_validates_dot_precision() -> None:
     with pytest.raises(ValueError, match="dot_precision"):
         ShmooshAttnProcessor(dot_precision="squint")
+
+
+def test_processor_validates_split_dot_precision() -> None:
+    with pytest.raises(ValueError, match="score_dot_precision"):
+        ShmooshAttnProcessor(score_dot_precision="sparkly")

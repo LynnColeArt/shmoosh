@@ -12,6 +12,8 @@ from shmoosh.packed_scores import (
     tl,
 )
 
+DotPrecision = Literal["ieee", "tf32", "tf32x3"]
+
 _FUSED_TRITON_SINGLE_KEY_TILE = 128
 _FUSED_TRITON_QUERY_TILE = 16
 _FUSED_TRITON_STREAMING_QUERY_TILE = 32
@@ -30,7 +32,11 @@ def packed_key_attention_output(
     resources: PackedScoreResources | None = None,
     backend: Literal["auto", "torch", "triton"] = "auto",
     output_dtype: Any | None = None,
-    dot_precision: Literal["ieee", "tf32", "tf32x3"] = "ieee",
+    dot_precision: DotPrecision = "ieee",
+    rotation_dot_precision: DotPrecision | None = None,
+    score_dot_precision: DotPrecision | None = None,
+    value_dot_precision: DotPrecision | None = None,
+    qjl_dot_precision: DotPrecision | None = None,
 ) -> Any:
     """Compute attention output from packed keys and exact values.
 
@@ -41,8 +47,13 @@ def packed_key_attention_output(
     _validate_query_value_block(query, value, block)
     if backend not in {"auto", "torch", "triton"}:
         raise ValueError("backend must be one of: auto, torch, triton")
-    if dot_precision not in {"ieee", "tf32", "tf32x3"}:
-        raise ValueError("dot_precision must be one of: ieee, tf32, tf32x3")
+    dot_precisions = _resolved_dot_precisions(
+        dot_precision=dot_precision,
+        rotation_dot_precision=rotation_dot_precision,
+        score_dot_precision=score_dot_precision,
+        value_dot_precision=value_dot_precision,
+        qjl_dot_precision=qjl_dot_precision,
+    )
 
     target_dtype = query.dtype if output_dtype is None else output_dtype
     if backend == "torch":
@@ -61,6 +72,7 @@ def packed_key_attention_output(
             resources=resources,
             output_dtype=target_dtype,
             dot_precision=dot_precision,
+            **dot_precisions,
         )
     if backend == "triton" and not getattr(query, "is_cuda", False):
         raise ValueError("triton packed-key attention requires a CUDA query tensor")
@@ -111,7 +123,11 @@ def triton_packed_key_attention_output(
     output_dtype: Any | None = None,
     block_q: int = _FUSED_TRITON_QUERY_TILE,
     block_k: int = _FUSED_TRITON_KEY_TILE,
-    dot_precision: Literal["ieee", "tf32", "tf32x3"] = "ieee",
+    dot_precision: DotPrecision = "ieee",
+    rotation_dot_precision: DotPrecision | None = None,
+    score_dot_precision: DotPrecision | None = None,
+    value_dot_precision: DotPrecision | None = None,
+    qjl_dot_precision: DotPrecision | None = None,
 ) -> Any:
     """Fused Triton packed-K attention.
 
@@ -121,8 +137,13 @@ def triton_packed_key_attention_output(
     """
 
     torch = _load_torch()
-    if dot_precision not in {"ieee", "tf32", "tf32x3"}:
-        raise ValueError("dot_precision must be one of: ieee, tf32, tf32x3")
+    dot_precisions = _resolved_dot_precisions(
+        dot_precision=dot_precision,
+        rotation_dot_precision=rotation_dot_precision,
+        score_dot_precision=score_dot_precision,
+        value_dot_precision=value_dot_precision,
+        qjl_dot_precision=qjl_dot_precision,
+    )
     if (
         triton is None
         or _packed_key_attention_output_kernel is None
@@ -233,7 +254,10 @@ def triton_packed_key_attention_output(
             if effective_qjl_bits == 0
             else sqrt(pi / 2.0) / float(effective_qjl_bits)
         ),
-        DOT_INPUT_PRECISION=dot_precision,
+        ROTATION_DOT_INPUT_PRECISION=dot_precisions["rotation_dot_precision"],
+        SCORE_DOT_INPUT_PRECISION=dot_precisions["score_dot_precision"],
+        VALUE_DOT_INPUT_PRECISION=dot_precisions["value_dot_precision"],
+        QJL_DOT_INPUT_PRECISION=dot_precisions["qjl_dot_precision"],
         num_warps=4,
     )
     return output.reshape(batch, heads, q_tokens, head_dim).to(dtype=target_dtype)
@@ -255,7 +279,11 @@ def encode_and_attention_output(
     resources: PackedScoreResources | None = None,
     code_format: Literal["packed", "byte", "packed_t"] = "packed",
     norm_dtype: Literal["fp32", "fp16"] = "fp32",
-    dot_precision: Literal["ieee", "tf32", "tf32x3"] = "ieee",
+    dot_precision: DotPrecision = "ieee",
+    rotation_dot_precision: DotPrecision | None = None,
+    score_dot_precision: DotPrecision | None = None,
+    value_dot_precision: DotPrecision | None = None,
+    qjl_dot_precision: DotPrecision | None = None,
 ) -> Any:
     """Encode K into a packed block, then run packed-K exact-V attention."""
 
@@ -279,6 +307,10 @@ def encode_and_attention_output(
         backend=backend,
         output_dtype=output_dtype,
         dot_precision=dot_precision,
+        rotation_dot_precision=rotation_dot_precision,
+        score_dot_precision=score_dot_precision,
+        value_dot_precision=value_dot_precision,
+        qjl_dot_precision=qjl_dot_precision,
     )
 
 
@@ -409,6 +441,36 @@ def _is_power_of_two(value: int) -> bool:
     return value > 0 and (value & (value - 1)) == 0
 
 
+def _resolved_dot_precisions(
+    *,
+    dot_precision: DotPrecision,
+    rotation_dot_precision: DotPrecision | None,
+    score_dot_precision: DotPrecision | None,
+    value_dot_precision: DotPrecision | None,
+    qjl_dot_precision: DotPrecision | None,
+) -> dict[str, DotPrecision]:
+    _validate_dot_precision("dot_precision", dot_precision)
+    for name, value in (
+        ("rotation_dot_precision", rotation_dot_precision),
+        ("score_dot_precision", score_dot_precision),
+        ("value_dot_precision", value_dot_precision),
+        ("qjl_dot_precision", qjl_dot_precision),
+    ):
+        if value is not None:
+            _validate_dot_precision(name, value)
+    return {
+        "rotation_dot_precision": rotation_dot_precision or dot_precision,
+        "score_dot_precision": score_dot_precision or dot_precision,
+        "value_dot_precision": value_dot_precision or dot_precision,
+        "qjl_dot_precision": qjl_dot_precision or score_dot_precision or dot_precision,
+    }
+
+
+def _validate_dot_precision(name: str, value: str) -> None:
+    if value not in {"ieee", "tf32", "tf32x3"}:
+        raise ValueError(f"{name} must be one of: ieee, tf32, tf32x3")
+
+
 def _load_torch():
     try:
         import torch
@@ -448,7 +510,10 @@ if triton is not None and tl is not None:
         INV_SQRT_D: tl.constexpr,
         ATTENTION_SCALE: tl.constexpr,
         QJL_SCALE: tl.constexpr,
-        DOT_INPUT_PRECISION: tl.constexpr,
+        ROTATION_DOT_INPUT_PRECISION: tl.constexpr,
+        SCORE_DOT_INPUT_PRECISION: tl.constexpr,
+        VALUE_DOT_INPUT_PRECISION: tl.constexpr,
+        QJL_DOT_INPUT_PRECISION: tl.constexpr,
     ):
         q_offsets = tl.program_id(0) * BLOCK_Q + tl.arange(0, BLOCK_Q)
         head_like = tl.program_id(1)
@@ -470,7 +535,11 @@ if triton is not None and tl is not None:
             + dim_offsets[None, :] * HEAD_DIM
             + dim_offsets[:, None]
         )
-        q_rot = tl.dot(query_values, rotation_t, input_precision=DOT_INPUT_PRECISION)
+        q_rot = tl.dot(
+            query_values,
+            rotation_t,
+            input_precision=ROTATION_DOT_INPUT_PRECISION,
+        )
 
         if BYTE_CODES:
             code = tl.load(
@@ -532,7 +601,7 @@ if triton is not None and tl is not None:
             combined = code_byte | (next_byte << 8)
             code = (combined >> bit_offset) & ((1 << BITS) - 1)
         code_values = tl.load(codebook_ptr + code, mask=k_mask[None, :], other=0.0)
-        scores = tl.dot(q_rot, code_values, input_precision=DOT_INPUT_PRECISION)
+        scores = tl.dot(q_rot, code_values, input_precision=SCORE_DOT_INPUT_PRECISION)
 
         key_norms = tl.load(
             norms_ptr + head_like * key_tokens + k_offsets,
@@ -551,7 +620,7 @@ if triton is not None and tl is not None:
             q_proj = tl.dot(
                 query_values,
                 qjl_t,
-                input_precision=DOT_INPUT_PRECISION,
+                input_precision=QJL_DOT_INPUT_PRECISION,
             )
             sign_byte_index = qjl_offsets[:, None] // 8
             sign_bit_offset = qjl_offsets[:, None] % 8
@@ -565,7 +634,7 @@ if triton is not None and tl is not None:
             ).to(tl.uint32)
             sign_bit = (sign_byte >> sign_bit_offset) & 1
             signs = tl.where(sign_bit == 1, 1.0, -1.0)
-            correction = tl.dot(q_proj, signs, input_precision=DOT_INPUT_PRECISION)
+            correction = tl.dot(q_proj, signs, input_precision=QJL_DOT_INPUT_PRECISION)
             residual_norm_values = tl.load(
                 residual_norms_ptr + head_like * key_tokens + k_offsets,
                 mask=k_mask,
@@ -583,7 +652,7 @@ if triton is not None and tl is not None:
             mask=k_mask[:, None],
             other=0.0,
         ).to(tl.float32)
-        output = tl.dot(weights, values, input_precision=DOT_INPUT_PRECISION)
+        output = tl.dot(weights, values, input_precision=VALUE_DOT_INPUT_PRECISION)
         tl.store(
             out_ptr
             + head_like * q_tokens * HEAD_DIM
@@ -619,7 +688,10 @@ if triton is not None and tl is not None:
         INV_SQRT_D: tl.constexpr,
         ATTENTION_SCALE: tl.constexpr,
         QJL_SCALE: tl.constexpr,
-        DOT_INPUT_PRECISION: tl.constexpr,
+        ROTATION_DOT_INPUT_PRECISION: tl.constexpr,
+        SCORE_DOT_INPUT_PRECISION: tl.constexpr,
+        VALUE_DOT_INPUT_PRECISION: tl.constexpr,
+        QJL_DOT_INPUT_PRECISION: tl.constexpr,
     ):
         q_offsets = tl.program_id(0) * BLOCK_Q + tl.arange(0, BLOCK_Q)
         head_like = tl.program_id(1)
@@ -641,7 +713,11 @@ if triton is not None and tl is not None:
             + dim_offsets[None, :] * HEAD_DIM
             + dim_offsets[:, None]
         )
-        q_rot = tl.dot(query_values, rotation_t, input_precision=DOT_INPUT_PRECISION)
+        q_rot = tl.dot(
+            query_values,
+            rotation_t,
+            input_precision=ROTATION_DOT_INPUT_PRECISION,
+        )
 
         if QJL_BITS > 0:
             qjl_offsets = tl.arange(0, QJL_BITS)
@@ -653,7 +729,7 @@ if triton is not None and tl is not None:
             q_proj = tl.dot(
                 query_values,
                 qjl_t,
-                input_precision=DOT_INPUT_PRECISION,
+                input_precision=QJL_DOT_INPUT_PRECISION,
             )
         else:
             q_proj = tl.zeros((BLOCK_Q, 1), dtype=tl.float32)
@@ -729,7 +805,7 @@ if triton is not None and tl is not None:
                 mask=tile_k_mask[None, :],
                 other=0.0,
             )
-            scores = tl.dot(q_rot, code_values, input_precision=DOT_INPUT_PRECISION)
+            scores = tl.dot(q_rot, code_values, input_precision=SCORE_DOT_INPUT_PRECISION)
 
             key_norms = tl.load(
                 norms_ptr + head_like * key_tokens + tile_k_offsets,
@@ -751,7 +827,7 @@ if triton is not None and tl is not None:
                 ).to(tl.uint32)
                 sign_bit = (sign_byte >> sign_bit_offset) & 1
                 signs = tl.where(sign_bit == 1, 1.0, -1.0)
-                correction = tl.dot(q_proj, signs, input_precision=DOT_INPUT_PRECISION)
+                correction = tl.dot(q_proj, signs, input_precision=QJL_DOT_INPUT_PRECISION)
                 residual_norm_values = tl.load(
                     residual_norms_ptr + head_like * key_tokens + tile_k_offsets,
                     mask=tile_k_mask,
@@ -782,7 +858,7 @@ if triton is not None and tl is not None:
             acc = acc * alpha + tl.dot(
                 weights,
                 values,
-                input_precision=DOT_INPUT_PRECISION,
+                input_precision=VALUE_DOT_INPUT_PRECISION,
             )
 
             m_i = m_new

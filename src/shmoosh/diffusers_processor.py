@@ -226,6 +226,10 @@ class ShmooshAttnProcessor:
     code_format: Literal["packed", "byte", "packed_t"] = "packed"
     norm_dtype: Literal["fp32", "fp16"] = "fp32"
     dot_precision: Literal["ieee", "tf32", "tf32x3"] = "ieee"
+    rotation_dot_precision: Literal["ieee", "tf32", "tf32x3"] | None = None
+    score_dot_precision: Literal["ieee", "tf32", "tf32x3"] | None = None
+    value_dot_precision: Literal["ieee", "tf32", "tf32x3"] | None = None
+    qjl_dot_precision: Literal["ieee", "tf32", "tf32x3"] | None = None
     cache_cross_attention: bool = False
     timing_recorder: ShmooshTimingRecorder | None = field(
         default=None,
@@ -272,6 +276,14 @@ class ShmooshAttnProcessor:
             raise ValueError("norm_dtype must be one of: fp32, fp16")
         if self.dot_precision not in {"ieee", "tf32", "tf32x3"}:
             raise ValueError("dot_precision must be one of: ieee, tf32, tf32x3")
+        for name, value in (
+            ("rotation_dot_precision", self.rotation_dot_precision),
+            ("score_dot_precision", self.score_dot_precision),
+            ("value_dot_precision", self.value_dot_precision),
+            ("qjl_dot_precision", self.qjl_dot_precision),
+        ):
+            if value is not None and value not in {"ieee", "tf32", "tf32x3"}:
+                raise ValueError(f"{name} must be one of: ieee, tf32, tf32x3")
 
     def __call__(
         self,
@@ -383,6 +395,7 @@ class ShmooshAttnProcessor:
                 "code_format": self.code_format,
                 "norm_dtype": self.norm_dtype,
                 "dot_precision": self.dot_precision,
+                **self._dot_precision_payload(),
                 "heads": heads,
                 "query_tokens": int(query.shape[2]),
                 "key_tokens": key_tokens,
@@ -419,6 +432,7 @@ class ShmooshAttnProcessor:
                     resources=resources,
                     backend=self.packed_backend,
                     dot_precision=self.dot_precision,
+                    **self._dot_precision_kwargs(),
                 )
         else:
             key = attn.to_k(encoder_hidden_states)
@@ -580,10 +594,34 @@ class ShmooshAttnProcessor:
             resources=resources,
             backend=self.packed_backend,
             dot_precision=self.dot_precision,
+            **self._dot_precision_kwargs(),
         )
         if target_device.type == "cuda":
             torch.cuda.synchronize(target_device)
         return True
+
+    def _dot_precision_kwargs(self) -> dict[str, str]:
+        return {
+            key: value
+            for key, value in {
+                "rotation_dot_precision": self.rotation_dot_precision,
+                "score_dot_precision": self.score_dot_precision,
+                "value_dot_precision": self.value_dot_precision,
+                "qjl_dot_precision": self.qjl_dot_precision,
+            }.items()
+            if value is not None
+        }
+
+    def _dot_precision_payload(self) -> dict[str, str]:
+        return {
+            "rotation_dot_precision": self.rotation_dot_precision
+            or self.dot_precision,
+            "score_dot_precision": self.score_dot_precision or self.dot_precision,
+            "value_dot_precision": self.value_dot_precision or self.dot_precision,
+            "qjl_dot_precision": self.qjl_dot_precision
+            or self.score_dot_precision
+            or self.dot_precision,
+        }
 
     def _packed_codec(self, *, head_dim: int, bits: int) -> ShmooshCodec:
         cache_key = self._packed_codec_key(head_dim=head_dim, bits=bits)
