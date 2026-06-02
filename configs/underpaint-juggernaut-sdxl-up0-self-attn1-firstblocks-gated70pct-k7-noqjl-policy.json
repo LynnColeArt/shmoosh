@@ -90,6 +90,21 @@
       "mean_encode_rotate_bucketize_ms": 0.47224052509086,
       "mean_encode_pack_codes_ms": 0.003599790269853892
     },
+    "validation_suite_1024_packed_t": {
+      "output_dir": "captures/image-policy-suite-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-1024-packedt",
+      "case_count": 3,
+      "min_psnr_db": 52.07296801284096,
+      "mean_psnr_db": 54.268887496982586,
+      "max_mse": 0.0000062044487094681244,
+      "mean_baseline_seconds": 9.801923499675468,
+      "mean_shmoosh_seconds": 9.217236129101366,
+      "mean_speedup": 1.0634341317054992,
+      "mean_scheduled_quantized_ms": 2.9596672608965523,
+      "mean_packed_encode_ms": 0.6482312326422996,
+      "mean_packed_attention_ms": 1.2806011191396802,
+      "mean_encode_rotate_bucketize_ms": 0.39903825032853466,
+      "mean_encode_pack_codes_ms": 0.003685152882503139
+    },
     "processor_trace": {
       "output_dir": "captures/image-ab-juggernaut-up0-self-attn1-firstblocks-gated70pct-k7-noqjl-1024-trace-reading-nook",
       "prompt": "reading-nook-seed1-1024",
@@ -147,7 +162,7 @@
       "mean_packed_encode_ms": 1.0840521168170704,
       "mean_packed_attention_ms": 1.6715835081413388
     },
-    "note": "This is the preferred self-attention policy so far. K7/no-QJL needs late activation, but at 70% it beats the K6/QJL128 self-attention policy on both fidelity and mean runtime."
+    "note": "This is the preferred self-attention policy so far. K7/no-QJL needs late activation, but at 70% it beats the K6/QJL128 self-attention policy on both fidelity and mean runtime. The packed_t code layout is now preferred for this K7/no-QJL self-attention path because it improves the packed-attention phase while preserving image quality."
   },
   "default": {
     "quantize_keys": false,
@@ -164,7 +179,7 @@
     "quantize_values": false,
     "attention_backend": "packed",
     "packed_backend": "auto",
-    "code_format": "packed"
+    "code_format": "packed_t"
   },
   "quantized_modules": [
     {

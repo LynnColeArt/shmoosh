@@ -92,6 +92,28 @@ def test_encode_packed_keys_byte_format_matches_reference_decode() -> None:
     assert torch.allclose(block.decode(), reference)
 
 
+def test_encode_packed_keys_transposed_format_matches_reference_decode() -> None:
+    generator = torch.Generator().manual_seed(11)
+    keys = torch.randn(1, 2, 5, 8, generator=generator)
+    block = encode_packed_keys(
+        keys,
+        bits=4,
+        qjl_bits=0,
+        seed=3,
+        codebook_samples=512,
+        code_format="packed_t",
+    )
+    codec = ShmooshCodec(dim=8, bits=4, qjl_bits=0, seed=3, codebook_samples=512)
+    reference = torch.from_numpy(codec.decode(codec.encode(keys.numpy())))
+
+    assert block.code_format == "packed_t"
+    assert block.codes.shape == (1, 2, 4, 5)
+    assert block.code_bytes_per_vector == 4
+    assert block.packed_bytes_per_vector == 4 + 4
+    assert block.packed_key_bytes() == 1 * 2 * 5 * (4 + 4)
+    assert torch.allclose(block.decode(), reference)
+
+
 def test_encode_packed_keys_rejects_mismatched_codec() -> None:
     keys = torch.zeros(1, 2, 5, 8)
     codec = ShmooshCodec(dim=8, bits=4, qjl_bits=0, seed=3, codebook_samples=256)

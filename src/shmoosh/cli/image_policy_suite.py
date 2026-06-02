@@ -78,7 +78,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--code-format",
-        choices=["packed", "byte"],
+        choices=["packed", "packed_t", "byte"],
         default="packed",
     )
     parser.add_argument("--exact-keys", action="store_true")

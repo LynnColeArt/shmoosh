@@ -223,7 +223,7 @@ class ShmooshAttnProcessor:
     fallback_on_mask: bool = True
     attention_backend: str = "reference"
     packed_backend: str = "auto"
-    code_format: Literal["packed", "byte"] = "packed"
+    code_format: Literal["packed", "byte", "packed_t"] = "packed"
     cache_cross_attention: bool = False
     timing_recorder: ShmooshTimingRecorder | None = field(
         default=None,
@@ -264,8 +264,8 @@ class ShmooshAttnProcessor:
             raise ValueError("attention_backend must be one of: reference, packed")
         if self.packed_backend not in {"auto", "torch", "triton"}:
             raise ValueError("packed_backend must be one of: auto, torch, triton")
-        if self.code_format not in {"packed", "byte"}:
-            raise ValueError("code_format must be one of: packed, byte")
+        if self.code_format not in {"packed", "byte", "packed_t"}:
+            raise ValueError("code_format must be one of: packed, byte, packed_t")
 
     def __call__(
         self,

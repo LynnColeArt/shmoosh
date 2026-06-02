@@ -81,7 +81,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--code-format",
-        choices=["packed", "byte"],
+        choices=["packed", "packed_t", "byte"],
         default="packed",
         help="Runtime K-code layout for packed attention.",
     )

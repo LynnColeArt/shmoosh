@@ -170,6 +170,14 @@ K7/no-QJL/head_dim=64 streaming tile choice from `BQ32/BK32` to `BQ64/BK16`.
 Synthetic wins were small and noisy, but the three-case 1024 image suite kept
 quality unchanged (`52.07 dB` minimum PSNR, `54.27 dB` mean PSNR) and moved mean
 packed attention from the prior fused-rotate `1.4519ms` per call to `1.3521ms`.
+The packed transpose layout slice is recorded in
+`docs/packed-transpose-layout-2026-06-02.md`. It adds opt-in
+`code_format="packed_t"`, storing packed code bytes as `(code_bytes, tokens)` so
+Triton can read each byte lane contiguously across key tokens. The preferred
+K7/no-QJL 1024 self-attention policy now uses `packed_t`: quality stayed
+unchanged (`52.07 dB` minimum PSNR), and mean processor phases moved from
+`1.3521ms` to `1.2806ms` packed attention and from `3.1222ms` to `2.9597ms`
+scheduled quantized time.
 
 The next slice should be:
 

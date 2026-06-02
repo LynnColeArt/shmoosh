@@ -50,7 +50,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--code-format",
-        choices=["packed", "byte", "rotated"],
+        choices=["packed", "packed_t", "byte", "rotated"],
         default="packed",
         help="Runtime K representation to benchmark.",
     )

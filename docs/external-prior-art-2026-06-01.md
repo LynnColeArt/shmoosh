@@ -114,6 +114,11 @@ changing only the launch shape for K7/no-QJL/head_dim=64:
 `BQ64/BK16` instead of `BQ32/BK32`. That result is recorded in
 `docs/streaming-tile-v2-2026-06-02.md`.
 
+The packed transpose layout slice then changed memory layout instead of math:
+`code_format="packed_t"` stores compact code bytes as `(code_bytes, tokens)`.
+That better matches the attention kernel's byte-lane reads and is recorded in
+`docs/packed-transpose-layout-2026-06-02.md`.
+
 ## Sources
 
 - AXELRAM: https://arxiv.org/abs/2604.02638

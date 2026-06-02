@@ -67,6 +67,26 @@ def test_torch_packed_key_scores_accept_byte_codes() -> None:
     assert torch.allclose(scores, reference, atol=2e-5, rtol=1e-5)
 
 
+def test_torch_packed_key_scores_accept_transposed_codes() -> None:
+    generator = torch.Generator().manual_seed(10)
+    query = torch.randn(1, 2, 4, 8, generator=generator)
+    key = torch.randn(1, 2, 5, 8, generator=generator)
+    block = encode_packed_keys(
+        key,
+        bits=4,
+        qjl_bits=0,
+        seed=3,
+        codebook_samples=512,
+        code_format="packed_t",
+    )
+
+    scores = packed_key_scores(query, block, backend="auto")
+    reference = _reference_scores(query, block)
+
+    assert scores.shape == (1, 2, 4, 5)
+    assert torch.allclose(scores, reference, atol=2e-5, rtol=1e-5)
+
+
 def test_triton_packed_key_scores_rejects_byte_codes() -> None:
     query = torch.zeros(1, 2, 3, 8)
     key = torch.zeros(1, 2, 5, 8)
@@ -118,6 +138,30 @@ def test_triton_packed_key_scores_match_torch() -> None:
         qjl_bits=16,
         seed=5,
         codebook_samples=2_000,
+    )
+
+    triton_scores = triton_packed_key_scores(query, block)
+    torch_scores = torch_packed_key_scores(query, block)
+
+    assert triton_scores.shape == torch_scores.shape
+    assert torch.allclose(triton_scores, torch_scores, atol=2e-5, rtol=1e-5)
+
+
+@pytest.mark.skipif(
+    triton is None or not torch.cuda.is_available(),
+    reason="CUDA Triton is not available",
+)
+def test_triton_packed_key_scores_match_torch_with_transposed_codes() -> None:
+    generator = torch.Generator(device="cuda").manual_seed(11)
+    query = torch.randn(1, 2, 4, 8, generator=generator, device="cuda")
+    key = torch.randn(1, 2, 5, 8, generator=generator, device="cuda")
+    block = encode_packed_keys(
+        key,
+        bits=4,
+        qjl_bits=0,
+        seed=5,
+        codebook_samples=512,
+        code_format="packed_t",
     )
 
     triton_scores = triton_packed_key_scores(query, block)

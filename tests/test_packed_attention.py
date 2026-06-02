@@ -99,6 +99,44 @@ def test_packed_key_attention_accepts_byte_code_block() -> None:
     assert torch.allclose(byte_output, packed_output, atol=2e-5, rtol=1e-5)
 
 
+def test_packed_key_attention_accepts_transposed_code_block() -> None:
+    generator = torch.Generator().manual_seed(11)
+    query = torch.randn(1, 2, 4, 8, generator=generator)
+    key = torch.randn(1, 2, 5, 8, generator=generator)
+    value = torch.randn(1, 2, 5, 8, generator=generator)
+    transposed_block = encode_packed_keys(
+        key,
+        bits=4,
+        qjl_bits=0,
+        seed=3,
+        codebook_samples=512,
+        code_format="packed_t",
+    )
+    packed_block = encode_packed_keys(
+        key,
+        bits=4,
+        qjl_bits=0,
+        seed=3,
+        codebook_samples=512,
+    )
+
+    transposed_output = packed_key_attention_output(
+        query,
+        transposed_block,
+        value,
+        backend="torch",
+    )
+    packed_output = packed_key_attention_output(
+        query,
+        packed_block,
+        value,
+        backend="torch",
+    )
+
+    assert transposed_output.shape == query.shape
+    assert torch.allclose(transposed_output, packed_output, atol=2e-5, rtol=1e-5)
+
+
 def test_rotated_key_attention_matches_exact_reference() -> None:
     generator = torch.Generator().manual_seed(8)
     query = torch.randn(1, 2, 4, 8, generator=generator)
@@ -234,6 +272,42 @@ def test_fused_triton_attention_matches_torch_with_byte_codes() -> None:
         seed=5,
         codebook_samples=512,
         code_format="byte",
+    )
+
+    triton_output = triton_packed_key_attention_output(
+        query,
+        block,
+        value,
+        block_k=16,
+    )
+    torch_output = packed_key_attention_output(query, block, value, backend="torch")
+
+    assert triton_output.shape == torch_output.shape
+    assert torch.allclose(triton_output, torch_output, atol=5e-4, rtol=5e-4)
+
+
+@pytest.mark.skipif(
+    triton is None or not torch.cuda.is_available(),
+    reason="CUDA Triton is not available",
+)
+def test_fused_triton_attention_matches_torch_with_transposed_codes() -> None:
+    generator = torch.Generator(device="cuda").manual_seed(12)
+    query = torch.randn(
+        1, 2, 7, 16, generator=generator, device="cuda", dtype=torch.float16
+    )
+    key = torch.randn(
+        1, 2, 33, 16, generator=generator, device="cuda", dtype=torch.float16
+    )
+    value = torch.randn(
+        1, 2, 33, 16, generator=generator, device="cuda", dtype=torch.float16
+    )
+    block = encode_packed_keys(
+        key,
+        bits=4,
+        qjl_bits=0,
+        seed=5,
+        codebook_samples=512,
+        code_format="packed_t",
     )
 
     triton_output = triton_packed_key_attention_output(

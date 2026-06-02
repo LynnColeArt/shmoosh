@@ -186,7 +186,7 @@ def triton_packed_key_scores(
     """Minimal Triton score kernel that unpacks packed K codes in-kernel."""
 
     torch = _load_torch()
-    if block.code_format != "packed":
+    if block.code_format not in {"packed", "packed_t"}:
         raise ValueError("triton packed-key scores require packed codes")
     if triton is None or _packed_key_score_kernel is None:
         raise RuntimeError("triton is required for backend='triton'")
@@ -235,9 +235,18 @@ def triton_packed_key_scores(
         residual_signs = torch.empty((1,), device=query.device, dtype=torch.uint8)
         residual_norms = torch.empty((1,), device=query.device, dtype=torch.float32)
 
-    codes = block.codes.contiguous().reshape(
-        head_like, key_tokens, block.code_bytes_per_vector
-    )
+    if block.code_format == "packed_t":
+        codes = block.codes.contiguous().reshape(
+            head_like,
+            block.code_bytes_per_vector,
+            key_tokens,
+        )
+    else:
+        codes = block.codes.contiguous().reshape(
+            head_like,
+            key_tokens,
+            block.code_bytes_per_vector,
+        )
     norms = block.norms.to(dtype=torch.float32).contiguous().reshape(
         head_like, key_tokens
     )
@@ -264,6 +273,7 @@ def triton_packed_key_scores(
         key_tokens,
         HEAD_DIM=head_dim,
         BITS=block.bits,
+        TRANSPOSED_CODES=block.code_format == "packed_t",
         QJL_BITS=effective_qjl_bits,
         CODE_BYTES=block.code_bytes_per_vector,
         SIGN_BYTES=block.qjl_sign_bytes_per_vector if effective_qjl_bits else 1,
@@ -305,8 +315,12 @@ def _code_indices(block: PackedKeyBlock, *, device: Any) -> Any:
     torch = _load_torch()
     if block.code_format == "byte":
         return block.codes.to(device=device, dtype=torch.int64)
+    if block.code_format == "packed_t":
+        codes = block.codes.transpose(-1, -2).contiguous()
+    else:
+        codes = block.codes
     return _unpack_bits(
-        block.codes.to(device=device),
+        codes.to(device=device),
         bits=block.bits,
         value_count=block.head_dim,
     )
@@ -347,6 +361,7 @@ if triton is not None and tl is not None:
         key_tokens,
         HEAD_DIM: tl.constexpr,
         BITS: tl.constexpr,
+        TRANSPOSED_CODES: tl.constexpr,
         QJL_BITS: tl.constexpr,
         CODE_BYTES: tl.constexpr,
         SIGN_BYTES: tl.constexpr,
@@ -371,25 +386,45 @@ if triton is not None and tl is not None:
             bit_position = dim_index * BITS
             byte_index = bit_position // 8
             bit_offset = bit_position % 8
-            code_byte = tl.load(
-                codes_ptr
-                + head_like * key_tokens * CODE_BYTES
-                + k_offsets * CODE_BYTES
-                + byte_index,
-                mask=k_mask,
-                other=0,
-            ).to(tl.uint32)
-            combined = code_byte
-            if bit_offset + BITS > 8:
-                next_byte = tl.load(
+            if TRANSPOSED_CODES:
+                code_byte = tl.load(
+                    codes_ptr
+                    + head_like * key_tokens * CODE_BYTES
+                    + byte_index * key_tokens
+                    + k_offsets,
+                    mask=k_mask,
+                    other=0,
+                ).to(tl.uint32)
+            else:
+                code_byte = tl.load(
                     codes_ptr
                     + head_like * key_tokens * CODE_BYTES
                     + k_offsets * CODE_BYTES
-                    + byte_index
-                    + 1,
-                    mask=k_mask & ((byte_index + 1) < CODE_BYTES),
+                    + byte_index,
+                    mask=k_mask,
                     other=0,
                 ).to(tl.uint32)
+            combined = code_byte
+            if bit_offset + BITS > 8:
+                if TRANSPOSED_CODES:
+                    next_byte = tl.load(
+                        codes_ptr
+                        + head_like * key_tokens * CODE_BYTES
+                        + (byte_index + 1) * key_tokens
+                        + k_offsets,
+                        mask=k_mask & ((byte_index + 1) < CODE_BYTES),
+                        other=0,
+                    ).to(tl.uint32)
+                else:
+                    next_byte = tl.load(
+                        codes_ptr
+                        + head_like * key_tokens * CODE_BYTES
+                        + k_offsets * CODE_BYTES
+                        + byte_index
+                        + 1,
+                        mask=k_mask & ((byte_index + 1) < CODE_BYTES),
+                        other=0,
+                    ).to(tl.uint32)
                 combined = combined | (next_byte << 8)
             code = (combined >> bit_offset) & ((1 << BITS) - 1)
             code_values = tl.load(codebook_ptr + code, mask=k_mask, other=0.0)

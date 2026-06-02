@@ -35,7 +35,7 @@ class PackedKeyBlock:
     seed: int
     codebook_samples: int = 80_000
     lloyd_iters: int = 80
-    code_format: Literal["packed", "byte"] = "packed"
+    code_format: Literal["packed", "byte", "packed_t"] = "packed"
 
     @property
     def shape(self) -> tuple[int, int, int, int]:
@@ -104,7 +104,7 @@ class PackedKeyBlock:
             indices = self.codes.to(dtype=_load_torch().int64)
         else:
             indices = _unpack_bits(
-                self.codes,
+                _codes_for_bit_unpack(self.codes, code_format=self.code_format),
                 bits=self.bits,
                 value_count=self.head_dim,
             )
@@ -151,7 +151,7 @@ def encode_packed_keys(
     timing_recorder: Any | None = None,
     timing_module: str | None = None,
     step_state: Any | None = None,
-    code_format: Literal["packed", "byte"] = "packed",
+    code_format: Literal["packed", "byte", "packed_t"] = "packed",
 ) -> PackedKeyBlock:
     torch = _load_torch()
     if keys.ndim != 4:
@@ -160,8 +160,8 @@ def encode_packed_keys(
         raise ValueError("bits must be in the range 1..8 for packed key blocks")
     if qjl_bits < 0:
         raise ValueError("qjl_bits must be non-negative")
-    if code_format not in {"packed", "byte"}:
-        raise ValueError("code_format must be one of: packed, byte")
+    if code_format not in {"packed", "byte", "packed_t"}:
+        raise ValueError("code_format must be one of: packed, byte, packed_t")
 
     device = keys.device
     batch, heads, tokens, head_dim = (int(size) for size in keys.shape)
@@ -248,7 +248,7 @@ def _encode_packed_keys_torch(
     timing_recorder: Any | None = None,
     timing_module: str | None = None,
     step_state: Any | None = None,
-    code_format: Literal["packed", "byte"] = "packed",
+    code_format: Literal["packed", "byte", "packed_t"] = "packed",
 ) -> PackedKeyBlock:
     torch = _load_torch()
     device = keys.device
@@ -351,6 +351,8 @@ def _encode_packed_keys_torch(
                 code_format=code_format,
                 validate=False,
             )
+        elif code_format == "packed_t":
+            codes = _transpose_packed_codes(codes)
 
     residual_signs = None
     residual_norms = None
@@ -409,8 +411,8 @@ def _encode_codes(
     validate: bool = True,
 ) -> Any:
     torch = _load_torch()
-    if code_format not in {"packed", "byte"}:
-        raise ValueError("code_format must be one of: packed, byte")
+    if code_format not in {"packed", "byte", "packed_t"}:
+        raise ValueError("code_format must be one of: packed, byte, packed_t")
     indices = indices.to(dtype=torch.int64)
     if (
         validate
@@ -420,7 +422,20 @@ def _encode_codes(
         raise ValueError("value is out of range for requested bit width")
     if code_format == "byte":
         return indices.to(dtype=torch.uint8)
-    return _pack_bits(indices, bits=bits, validate=False)
+    packed = _pack_bits(indices, bits=bits, validate=False)
+    if code_format == "packed_t":
+        return _transpose_packed_codes(packed)
+    return packed
+
+
+def _codes_for_bit_unpack(codes: Any, *, code_format: str) -> Any:
+    if code_format == "packed_t":
+        return codes.transpose(-1, -2).contiguous()
+    return codes
+
+
+def _transpose_packed_codes(codes: Any) -> Any:
+    return codes.transpose(-1, -2).contiguous()
 
 
 def _pack_bits(values: Any, *, bits: int, validate: bool = True) -> Any:
@@ -565,7 +580,7 @@ def _can_use_triton_bucketize_pack(
         and getattr(normalized, "is_cuda", False)
         and getattr(boundaries, "is_cuda", False)
         and qjl_bits == 0
-        and code_format == "packed"
+        and code_format in {"packed", "packed_t"}
         and bits == 7
         and head_dim % _pack_group_size(bits) == 0
     )
@@ -588,7 +603,7 @@ def _can_use_triton_rotate_bucketize_pack(
         and getattr(rotation, "is_cuda", False)
         and getattr(boundaries, "is_cuda", False)
         and qjl_bits == 0
-        and code_format == "packed"
+        and code_format in {"packed", "packed_t"}
         and bits == 7
         and head_dim == 64
     )
