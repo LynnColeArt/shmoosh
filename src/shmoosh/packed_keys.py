@@ -291,6 +291,7 @@ def _encode_packed_keys_torch(
         "key_tokens": int(keys.shape[2]),
         "heads": int(keys.shape[1]),
         "fused_norm_rotate_bucketize_pack": False,
+        "direct_transposed_codes": False,
         "fused_bucketize_pack": False,
         "fused_rotate_bucketize_pack": False,
     }
@@ -372,7 +373,9 @@ def _encode_packed_keys_torch(
                     rotation,
                     boundaries,
                     bits=bits,
+                    code_format=code_format,
                 )
+                timing_metadata["direct_transposed_codes"] = code_format == "packed_t"
             else:
                 rotated = torch.matmul(keys_f, rotation.T)
                 normalized = rotated * sqrt(head_dim)
@@ -410,7 +413,7 @@ def _encode_packed_keys_torch(
                     code_format=code_format,
                     validate=False,
                 )
-            elif code_format == "packed_t":
+            elif code_format == "packed_t" and not timing_metadata["direct_transposed_codes"]:
                 codes = _transpose_packed_codes(codes)
 
     residual_signs = None
@@ -757,37 +760,44 @@ def _triton_rotate_bucketize_pack_codes(
     boundaries: Any,
     *,
     bits: int,
+    code_format: str = "packed",
 ) -> Any:
     torch = _load_torch()
     if triton is None or _rotate_bucketize_pack_codes_kernel is None:
         raise RuntimeError("triton is required for fused rotate/bucketize/pack")
     if bits != 7:
         raise ValueError("fused rotate/bucketize/pack currently supports K7")
+    if code_format not in {"packed", "packed_t"}:
+        raise ValueError("fused rotate/bucketize/pack requires packed codes")
     head_dim = int(unit_keys.shape[-1])
     if head_dim != 64:
         raise ValueError("fused rotate/bucketize/pack currently requires head_dim=64")
 
+    batch, heads, tokens, _head_dim = (int(size) for size in unit_keys.shape)
     vector_count = int(unit_keys.numel() // head_dim)
     code_bytes = _ceil_div(head_dim * bits, 8)
-    output = torch.empty(
-        (*unit_keys.shape[:-1], code_bytes),
-        dtype=torch.uint8,
-        device=unit_keys.device,
+    output_shape = (
+        (batch, heads, code_bytes, tokens)
+        if code_format == "packed_t"
+        else (batch, heads, tokens, code_bytes)
     )
+    output = torch.empty(output_shape, dtype=torch.uint8, device=unit_keys.device)
     unit_2d = unit_keys.reshape(vector_count, head_dim)
-    output_2d = output.reshape(vector_count, code_bytes)
+    output_flat = output.reshape(-1)
     _rotate_bucketize_pack_codes_kernel[(triton.cdiv(vector_count, 16),)](
         unit_2d,
         rotation,
         boundaries,
-        output_2d,
+        output_flat,
         vector_count,
+        tokens,
         BITS=bits,
         BLOCK_VECTORS=16,
         HEAD_DIM=head_dim,
         CODE_BYTES=code_bytes,
         BOUNDARY_COUNT=(1 << bits) - 1,
         SQRT_D=sqrt(head_dim),
+        TRANSPOSED_CODES=code_format == "packed_t",
         num_warps=4,
     )
     return output
@@ -1046,12 +1056,14 @@ if triton is not None and tl is not None:
         boundaries_ptr,
         output_ptr,
         vector_count,
+        key_tokens,
         BITS: tl.constexpr,
         BLOCK_VECTORS: tl.constexpr,
         HEAD_DIM: tl.constexpr,
         CODE_BYTES: tl.constexpr,
         BOUNDARY_COUNT: tl.constexpr,
         SQRT_D: tl.constexpr,
+        TRANSPOSED_CODES: tl.constexpr,
     ):
         block_id = tl.program_id(0)
         vector_offsets = block_id * BLOCK_VECTORS + tl.arange(0, BLOCK_VECTORS)
@@ -1125,14 +1137,25 @@ if triton is not None and tl is not None:
             b4 = (c4 >> 4) | ((c5 & 0x1F) << 3)
             b5 = (c5 >> 5) | ((c6 & 0x3F) << 2)
             b6 = (c6 >> 6) | (c7 << 1)
-            out_base = vector_offsets * CODE_BYTES + base_byte
-            tl.store(output_ptr + out_base + 0, b0.to(tl.uint8), mask=vector_mask)
-            tl.store(output_ptr + out_base + 1, b1.to(tl.uint8), mask=vector_mask)
-            tl.store(output_ptr + out_base + 2, b2.to(tl.uint8), mask=vector_mask)
-            tl.store(output_ptr + out_base + 3, b3.to(tl.uint8), mask=vector_mask)
-            tl.store(output_ptr + out_base + 4, b4.to(tl.uint8), mask=vector_mask)
-            tl.store(output_ptr + out_base + 5, b5.to(tl.uint8), mask=vector_mask)
-            tl.store(output_ptr + out_base + 6, b6.to(tl.uint8), mask=vector_mask)
+            if TRANSPOSED_CODES:
+                head_like_offsets = vector_offsets // key_tokens
+                token_offsets = vector_offsets - head_like_offsets * key_tokens
+                out_base = (
+                    head_like_offsets * key_tokens * CODE_BYTES
+                    + (base_byte * key_tokens)
+                    + token_offsets
+                )
+                byte_stride = key_tokens
+            else:
+                out_base = vector_offsets * CODE_BYTES + base_byte
+                byte_stride = 1
+            tl.store(output_ptr + out_base + byte_stride * 0, b0.to(tl.uint8), mask=vector_mask)
+            tl.store(output_ptr + out_base + byte_stride * 1, b1.to(tl.uint8), mask=vector_mask)
+            tl.store(output_ptr + out_base + byte_stride * 2, b2.to(tl.uint8), mask=vector_mask)
+            tl.store(output_ptr + out_base + byte_stride * 3, b3.to(tl.uint8), mask=vector_mask)
+            tl.store(output_ptr + out_base + byte_stride * 4, b4.to(tl.uint8), mask=vector_mask)
+            tl.store(output_ptr + out_base + byte_stride * 5, b5.to(tl.uint8), mask=vector_mask)
+            tl.store(output_ptr + out_base + byte_stride * 6, b6.to(tl.uint8), mask=vector_mask)
 
     @triton.jit
     def _bucketize_pack_codes_kernel(

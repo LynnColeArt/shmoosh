@@ -241,3 +241,10 @@ The parity follow-up is recorded in
 tensors, fused encode introduced 30 total code-index differences with a worst
 rate of `0.00000763`; stored norm drift was negligible. The remaining quality
 question is bucket-boundary compatibility, not a broad encode-layout bug.
+
+The quality-safe follow-up is recorded in
+`docs/split-direct-packedt-encode-2026-06-02.md`. The split path now writes
+`packed_t` directly from the split-normalized Triton rotate/bucketize/pack
+kernel. This keeps split's bucket decisions, cuts same-process split packed
+encode from `0.9956ms` to `0.7281ms`, and preserves the `52.0788 dB`
+reading-nook PSNR floor.

@@ -122,3 +122,15 @@ check showed the output difference came almost entirely from the code-index
 flips, not stored norm drift.
 
 That narrows the quality recovery target to bucket-boundary compatibility.
+
+## Split Direct Packed-T Follow-Up
+
+`docs/split-direct-packedt-encode-2026-06-02.md` records the quality-safe
+follow-up. Instead of making fused encode broader, the split path now writes
+`packed_t` directly from the split-normalized Triton rotate/bucketize/pack
+kernel. This keeps the split bucket decisions but removes the Python-side
+transpose tax.
+
+On the same-process 1024 image compare, split packed encode improved from the
+previous `0.9956ms` to `0.7281ms`, while the split policy retained its
+`52.0788 dB` reading-nook quality floor.

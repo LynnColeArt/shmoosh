@@ -285,7 +285,8 @@ def test_triton_norm_rotate_bucketize_pack_keys_matches_torch(
     triton is None or not torch.cuda.is_available(),
     reason="CUDA Triton is not available",
 )
-def test_triton_rotate_bucketize_pack_codes_matches_torch() -> None:
+@pytest.mark.parametrize("code_format", ["packed", "packed_t"])
+def test_triton_rotate_bucketize_pack_codes_matches_torch(code_format: str) -> None:
     generator = torch.Generator(device="cuda").manual_seed(10)
     keys = torch.randn(
         1,
@@ -305,16 +306,20 @@ def test_triton_rotate_bucketize_pack_codes_matches_torch() -> None:
     normalized = (torch.matmul(unit, resources.rotation.T) * sqrt(64)).contiguous()
     indices = torch.bucketize(normalized, resources.boundaries).to(dtype=torch.int64)
     expected = _pack_bits(indices, bits=7)
+    if code_format == "packed_t":
+        expected = expected.transpose(-1, -2).contiguous()
 
     packed = _triton_rotate_bucketize_pack_codes(
         unit,
         resources.rotation,
         resources.boundaries,
         bits=7,
+        code_format=code_format,
     )
 
     assert torch.equal(packed, expected)
-    assert torch.equal(_unpack_bits(packed, bits=7, value_count=64), indices)
+    unpackable = packed.transpose(-1, -2).contiguous() if code_format == "packed_t" else packed
+    assert torch.equal(_unpack_bits(unpackable, bits=7, value_count=64), indices)
 
 
 def test_packed_key_bytes_match_sdxl_assumption() -> None:

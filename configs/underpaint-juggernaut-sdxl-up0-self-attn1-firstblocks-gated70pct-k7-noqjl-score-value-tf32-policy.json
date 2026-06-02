@@ -31,6 +31,18 @@
       "all_tf32_mean_packed_attention_ms": 0.7882646233257321,
       "comparison_note": "Balanced 4070 fast mode: preserves reading-nook PSNR at the ieee level while recovering most of the all-TF32 packed-attention speedup."
     },
+    "direct_packed_t_encode_compare_1024": {
+      "output_dir": "captures/image-policy-compare-juggernaut-up0-self-attn1-k7-noqjl-1024-score-value-directt-encode-20260602",
+      "case_count": 3,
+      "min_psnr_db": 52.07878234744321,
+      "mean_psnr_db": 54.160336587856875,
+      "mean_speedup": 1.0492913438732485,
+      "mean_scheduled_quantized_ms": 2.8210518648847938,
+      "mean_packed_encode_ms": 0.728145448697938,
+      "mean_packed_attention_ms": 0.910925864311004,
+      "previous_split_mean_packed_encode_ms": 0.9955643607234513,
+      "comparison_note": "Direct packed_t write removes the split path's transpose tax while preserving the split policy's image metrics."
+    },
     "note": "Promoted as the balanced RTX 4070 fast-mode candidate after same-process comparison. Keep ieee as the high-fidelity reference and rerun this comparison on the 3080 before calling it a universal default."
   },
   "default": {
