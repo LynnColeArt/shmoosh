@@ -38,6 +38,7 @@ shmoosh-packed-attention-smoke = "shmoosh.cli.packed_attention_smoke:main"
 shmoosh-self-attention-variant-bench = "shmoosh.cli.self_attention_variant_bench:main"
 shmoosh-packed-attention-perf-guard = "shmoosh.cli.packed_attention_perf_guard:main"
 shmoosh-attention-sparsity-oracle = "shmoosh.cli.attention_sparsity_oracle:main"
+shmoosh-attention-budget-calibrate = "shmoosh.cli.attention_budget_calibrate:main"
 
 [build-system]
 requires = ["hatchling"]
