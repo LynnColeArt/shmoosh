@@ -57,6 +57,22 @@ def main() -> None:
         default="9,17,33",
         help="Comma-separated square local windows. Use an empty string to skip.",
     )
+    parser.add_argument(
+        "--spatial-block-top-k",
+        default="",
+        help=(
+            "Comma-separated TILE_SIDE:BLOCKS specs for square self-attention. "
+            "Keeps all keys in the top spatial key tiles per query."
+        ),
+    )
+    parser.add_argument(
+        "--local-spatial-block-top-k",
+        default="",
+        help=(
+            "Comma-separated TILE_SIDE:BLOCKS:LOCAL_WINDOW specs for square "
+            "self-attention. Keeps local keys plus top spatial key tiles."
+        ),
+    )
     parser.add_argument("--limit", type=int)
     parser.add_argument("--min-key-tokens", type=int, default=0)
     parser.add_argument(
@@ -136,7 +152,7 @@ def _run_capture_oracle(
     torch: Any,
     device: str,
     dtype: Any,
-    specs: list[tuple[str, float | int]],
+    specs: list[tuple[str, float | int | tuple[int, ...]]],
 ) -> list[dict[str, Any]]:
     loaded = np.load(path)
     metadata = _load_metadata(loaded)
@@ -174,7 +190,7 @@ def _run_tensor_oracle(
     value: Any,
     *,
     torch: Any,
-    specs: list[tuple[str, float | int]],
+    specs: list[tuple[str, float | int | tuple[int, ...]]],
     base_row: dict[str, Any],
 ) -> list[dict[str, Any]]:
     query_f = query.to(dtype=torch.float32)
@@ -207,7 +223,7 @@ def _run_tensor_oracle(
         }
     ]
     for mode, setting in specs:
-        if mode == "local_window" and not _supports_local_window(logits):
+        if not _supports_mask(mode, setting, logits):
             continue
         mask = _build_mask(mode, setting, logits, dense_weights, torch=torch)
         sparse_output = _sparse_attention(logits, value_f, mask, torch=torch)
@@ -224,9 +240,28 @@ def _run_tensor_oracle(
     return rows
 
 
+def _supports_mask(
+    mode: str,
+    setting: float | int | tuple[int, ...],
+    logits: Any,
+) -> bool:
+    if mode == "local_window":
+        return _supports_local_window(logits)
+    if mode == "spatial_block_top_k":
+        block_side, _block_count = setting
+        return _supports_spatial_blocks(logits, int(block_side))
+    if mode == "local_spatial_block_top_k":
+        block_side, _block_count, _window = setting
+        return _supports_local_window(logits) and _supports_spatial_blocks(
+            logits,
+            int(block_side),
+        )
+    return True
+
+
 def _build_mask(
     mode: str,
-    setting: float | int,
+    setting: float | int | tuple[int, ...],
     logits: Any,
     dense_weights: Any,
     *,
@@ -243,6 +278,29 @@ def _build_mask(
             int(setting),
             device=logits.device,
         )
+    if mode == "spatial_block_top_k":
+        block_side, block_count = setting
+        return _spatial_block_topk_mask(
+            logits,
+            block_side=int(block_side),
+            block_count=int(block_count),
+            torch=torch,
+        )
+    if mode == "local_spatial_block_top_k":
+        block_side, block_count, window = setting
+        block_mask = _spatial_block_topk_mask(
+            logits,
+            block_side=int(block_side),
+            block_count=int(block_count),
+            torch=torch,
+        )
+        local_mask = _local_window_mask(
+            torch,
+            int(logits.shape[-2]),
+            int(window),
+            device=logits.device,
+        )
+        return block_mask | _expand_mask(local_mask, block_mask)
     raise ValueError(f"unknown mask mode: {mode}")
 
 
@@ -253,6 +311,15 @@ def _supports_local_window(logits: Any) -> bool:
         return False
     side = isqrt(query_tokens)
     return side * side == query_tokens
+
+
+def _supports_spatial_blocks(logits: Any, block_side: int) -> bool:
+    query_tokens = int(logits.shape[-2])
+    key_tokens = int(logits.shape[-1])
+    if query_tokens != key_tokens:
+        return False
+    side = isqrt(query_tokens)
+    return side * side == query_tokens and side % block_side == 0
 
 
 def _topk_mask(logits: Any, k: int, *, torch: Any) -> Any:
@@ -289,6 +356,85 @@ def _local_window_mask(torch: Any, tokens: int, window: int, *, device: Any) -> 
     row_delta = torch.abs(rows[:, None] - rows[None, :])
     col_delta = torch.abs(cols[:, None] - cols[None, :])
     return (row_delta <= radius) & (col_delta <= radius)
+
+
+def _spatial_block_topk_mask(
+    logits: Any,
+    *,
+    block_side: int,
+    block_count: int,
+    torch: Any,
+) -> Any:
+    if block_side <= 0:
+        raise ValueError("spatial block tile sides must be positive")
+    if block_count <= 0:
+        raise ValueError("spatial block counts must be positive")
+    query_tokens = int(logits.shape[-2])
+    key_tokens = int(logits.shape[-1])
+    if query_tokens != key_tokens:
+        raise ValueError("spatial block masks require self-attention")
+    side = _square_side(query_tokens)
+    if side % block_side != 0:
+        raise ValueError("spatial block tile side must divide the attention side")
+
+    blocks_per_side = side // block_side
+    block_ids = _spatial_key_block_ids(
+        torch,
+        side=side,
+        block_side=block_side,
+        device=logits.device,
+    )
+    num_blocks = blocks_per_side * blocks_per_side
+    block_count = min(block_count, num_blocks)
+    block_scores = _spatial_block_scores(
+        logits,
+        block_ids=block_ids,
+        num_blocks=num_blocks,
+        torch=torch,
+    )
+    selected_blocks = torch.topk(block_scores, k=block_count, dim=-1).indices
+    block_mask = torch.zeros_like(block_scores, dtype=torch.bool)
+    block_mask.scatter_(-1, selected_blocks, True)
+    return block_mask.gather(
+        -1,
+        block_ids.reshape(1, 1, 1, key_tokens).expand(*logits.shape[:-1], key_tokens),
+    )
+
+
+def _spatial_block_scores(
+    logits: Any,
+    *,
+    block_ids: Any,
+    num_blocks: int,
+    torch: Any,
+) -> Any:
+    scores = torch.full(
+        (*logits.shape[:-1], num_blocks),
+        float("-inf"),
+        device=logits.device,
+        dtype=logits.dtype,
+    )
+    return scores.scatter_reduce(
+        -1,
+        block_ids.reshape(1, 1, 1, -1).expand_as(logits),
+        logits,
+        reduce="amax",
+        include_self=True,
+    )
+
+
+def _spatial_key_block_ids(
+    torch: Any,
+    *,
+    side: int,
+    block_side: int,
+    device: Any,
+) -> Any:
+    positions = torch.arange(side * side, device=device)
+    rows = positions // side
+    cols = positions % side
+    blocks_per_side = side // block_side
+    return (rows // block_side) * blocks_per_side + (cols // block_side)
 
 
 def _square_side(tokens: int) -> int:
@@ -391,11 +537,23 @@ def _synthetic_tensors(
     return query, key, value
 
 
-def _mask_specs(args: argparse.Namespace) -> list[tuple[str, float | int]]:
-    specs: list[tuple[str, float | int]] = []
+def _mask_specs(
+    args: argparse.Namespace,
+) -> list[tuple[str, float | int | tuple[int, ...]]]:
+    specs: list[tuple[str, float | int | tuple[int, ...]]] = []
     specs.extend(("top_k", value) for value in _parse_ints(args.top_k))
     specs.extend(("top_p", value) for value in _parse_floats(args.top_p))
     specs.extend(("local_window", value) for value in _parse_ints(args.local_windows))
+    specs.extend(
+        ("spatial_block_top_k", value)
+        for value in _parse_spatial_block_specs(args.spatial_block_top_k)
+    )
+    specs.extend(
+        ("local_spatial_block_top_k", value)
+        for value in _parse_local_spatial_block_specs(
+            args.local_spatial_block_top_k
+        )
+    )
     return specs
 
 
@@ -413,6 +571,40 @@ def _parse_floats(raw: str) -> list[float]:
         if value <= 0.0:
             raise ValueError("float lists must contain positive values")
     return values
+
+
+def _parse_spatial_block_specs(raw: str) -> list[tuple[int, int]]:
+    specs = []
+    for value in raw.split(","):
+        value = value.strip()
+        if not value:
+            continue
+        parts = _parse_colon_ints(value, expected=2)
+        specs.append((parts[0], parts[1]))
+    return specs
+
+
+def _parse_local_spatial_block_specs(raw: str) -> list[tuple[int, int, int]]:
+    specs = []
+    for value in raw.split(","):
+        value = value.strip()
+        if not value:
+            continue
+        parts = _parse_colon_ints(value, expected=3)
+        if parts[2] % 2 == 0:
+            raise ValueError("local spatial block windows must be odd")
+        specs.append((parts[0], parts[1], parts[2]))
+    return specs
+
+
+def _parse_colon_ints(raw: str, *, expected: int) -> tuple[int, ...]:
+    raw_parts = raw.split(":")
+    if len(raw_parts) != expected or any(not part.strip() for part in raw_parts):
+        raise ValueError(f"expected {expected} colon-separated integers: {raw}")
+    parts = tuple(int(part.strip()) for part in raw_parts)
+    if any(part <= 0 for part in parts):
+        raise ValueError("colon-separated integer specs must be positive")
+    return parts
 
 
 def _dtype(torch: Any, raw: str) -> Any:

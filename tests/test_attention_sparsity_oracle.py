@@ -7,10 +7,13 @@ import pytest
 from shmoosh.cli.attention_sparsity_oracle import (
     _local_window_mask,
     _mask_stats,
+    _parse_local_spatial_block_specs,
     _parse_floats,
     _parse_ints,
+    _parse_spatial_block_specs,
     _quality_metrics,
     _run_tensor_oracle,
+    _spatial_block_topk_mask,
     _square_side,
     _supports_local_window,
     _topk_mask,
@@ -28,6 +31,18 @@ def test_parse_ints_allows_empty_list() -> None:
 def test_parse_floats_allows_empty_list() -> None:
     assert _parse_floats("") == []
     assert _parse_floats("0.95, 0.98") == [0.95, 0.98]
+
+
+def test_parse_spatial_block_specs() -> None:
+    assert _parse_spatial_block_specs("") == []
+    assert _parse_spatial_block_specs("4:2, 8:1") == [(4, 2), (8, 1)]
+
+
+def test_parse_local_spatial_block_specs() -> None:
+    assert _parse_local_spatial_block_specs("") == []
+    assert _parse_local_spatial_block_specs("4:2:9") == [(4, 2, 9)]
+    with pytest.raises(ValueError, match="windows must be odd"):
+        _parse_local_spatial_block_specs("4:2:8")
 
 
 def test_square_side_accepts_square_tokens() -> None:
@@ -67,6 +82,23 @@ def test_local_window_mask_uses_square_grid_neighbors() -> None:
 
     assert int(mask[4].sum().item()) == 9
     assert int(mask[0].sum().item()) == 4
+
+
+def test_spatial_block_topk_mask_keeps_top_spatial_tile_per_query() -> None:
+    logits = torch.zeros(1, 1, 16, 16)
+    logits[..., 0, 10] = 7.0
+    logits[..., 1, 0] = 6.0
+
+    mask = _spatial_block_topk_mask(
+        logits,
+        block_side=2,
+        block_count=1,
+        torch=torch,
+    )
+
+    assert mask.shape == logits.shape
+    assert mask[0, 0, 0].nonzero().squeeze(-1).tolist() == [10, 11, 14, 15]
+    assert mask[0, 0, 1].nonzero().squeeze(-1).tolist() == [0, 1, 4, 5]
 
 
 def test_mask_stats_reports_kept_fraction_and_attention_mass() -> None:
@@ -119,3 +151,37 @@ def test_run_tensor_oracle_emits_dense_and_sparse_rows() -> None:
         "local_window",
     ]
     assert rows[0]["relative_rmse"] == 0.0
+
+
+def test_run_tensor_oracle_emits_spatial_block_rows() -> None:
+    generator = torch.Generator(device="cpu").manual_seed(4)
+    query = torch.randn(1, 2, 16, 8, generator=generator)
+    key = torch.randn(1, 2, 16, 8, generator=generator)
+    value = torch.randn(1, 2, 16, 8, generator=generator)
+
+    rows = _run_tensor_oracle(
+        query,
+        key,
+        value,
+        torch=torch,
+        specs=[
+            ("spatial_block_top_k", (2, 1)),
+            ("local_spatial_block_top_k", (2, 1, 3)),
+        ],
+        base_row={
+            "capture": "synthetic",
+            "module": "synthetic.attn1",
+            "capture_index": "",
+            "dtype": "fp32",
+            "device": "cpu",
+        },
+    )
+
+    assert [row["mode"] for row in rows] == [
+        "dense",
+        "spatial_block_top_k",
+        "local_spatial_block_top_k",
+    ]
+    assert rows[1]["kept_keys_min"] == 4
+    assert rows[1]["kept_keys_max"] == 4
+    assert rows[2]["kept_keys_min"] >= rows[1]["kept_keys_min"]
