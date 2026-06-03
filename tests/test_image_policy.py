@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from argparse import Namespace
 
+import pytest
+
 from shmoosh.cli.image_ab_smoke import (
     _policy_processor_metadata,
     _processor_config,
@@ -12,6 +14,8 @@ from shmoosh.cli.image_policy_suite import _aggregate_rows, _cases_from_payload
 from shmoosh.cli.image_policy_compare import (
     _aggregate_candidate_rows,
     _parse_candidate_spec,
+    _stats_seconds,
+    _validate_warmup_args,
 )
 from shmoosh.diffusers_processor import DenoisingStepState, ScheduledShmooshAttnProcessor
 
@@ -394,6 +398,27 @@ def test_policy_compare_candidate_spec_uses_file_stem() -> None:
 
     assert label == "packed_tf32_policy"
     assert path == "configs/packed-tf32-policy.json"
+
+
+def test_policy_compare_validates_warmup_counts() -> None:
+    _validate_warmup_args(
+        Namespace(benchmark_warmup_renders=1, candidate_warmup_renders=0)
+    )
+
+    with pytest.raises(SystemExit, match="benchmark-warmup-renders"):
+        _validate_warmup_args(
+            Namespace(benchmark_warmup_renders=-1, candidate_warmup_renders=0)
+        )
+
+    with pytest.raises(SystemExit, match="candidate-warmup-renders"):
+        _validate_warmup_args(
+            Namespace(benchmark_warmup_renders=0, candidate_warmup_renders=-1)
+        )
+
+
+def test_policy_compare_sums_warmup_seconds() -> None:
+    assert _stats_seconds([{"seconds": 1.25}, {"seconds": 2.5}]) == 3.75
+    assert _stats_seconds([]) == 0.0
 
 
 def test_policy_compare_aggregates_by_candidate() -> None:

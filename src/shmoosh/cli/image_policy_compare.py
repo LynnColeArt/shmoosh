@@ -62,6 +62,7 @@ def main() -> None:
     args = parser.parse_args()
     if not args.list_modules and not args.candidate:
         raise SystemExit("Provide at least one --candidate LABEL=POLICY.json")
+    _validate_warmup_args(args)
 
     torch = _load_torch_and_diffusers()
     dtype = {
@@ -93,6 +94,15 @@ def main() -> None:
 
     _move_pipeline(pipe, args)
     _set_progress_bar(pipe)
+
+    benchmark_warmup = _run_benchmark_warmups(
+        pipe,
+        torch=torch,
+        args=args,
+        case=cases[0],
+        union_modules=union_modules,
+        original_processors=original_processors,
+    )
 
     rows: list[dict[str, Any]] = []
     try:
@@ -126,6 +136,12 @@ def main() -> None:
         "device": args.device,
         "dtype": args.dtype,
         "model_cpu_offload": args.model_cpu_offload,
+        "benchmark_warmup": {
+            "baseline_renders": args.benchmark_warmup_renders,
+            "candidate_renders": args.candidate_warmup_renders,
+            "baseline_case_id": cases[0].case_id,
+            "baseline": benchmark_warmup,
+        },
         "selected_modules": _module_metadata(all_modules, union_modules),
         "candidates": [
             {
@@ -246,6 +262,31 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Cache packed cross-attention K/V across denoising steps.",
     )
+    parser.add_argument(
+        "--benchmark-warmup-renders",
+        type=int,
+        default=1,
+        help=(
+            "Number of unmeasured exact baseline renders to run before measured "
+            "cases. Use 0 to preserve cold-start timing."
+        ),
+    )
+    parser.add_argument(
+        "--candidate-warmup-renders",
+        type=int,
+        default=0,
+        help=(
+            "Number of unmeasured candidate renders to run before each measured "
+            "candidate. This is expensive and warms candidate processor caches."
+        ),
+    )
+
+
+def _validate_warmup_args(args: argparse.Namespace) -> None:
+    if args.benchmark_warmup_renders < 0:
+        raise SystemExit("--benchmark-warmup-renders must be non-negative")
+    if args.candidate_warmup_renders < 0:
+        raise SystemExit("--candidate-warmup-renders must be non-negative")
 
 
 def _load_candidates(
@@ -307,6 +348,38 @@ def _candidate_module_union(candidates: list[_PolicyCandidate]) -> list[tuple[st
             seen.add(id(module))
             modules.append((name, module))
     return modules
+
+
+def _run_benchmark_warmups(
+    pipe: Any,
+    *,
+    torch: Any,
+    args: argparse.Namespace,
+    case: argparse.Namespace,
+    union_modules: list[tuple[str, Any]],
+    original_processors: dict[int, Any],
+) -> list[dict[str, Any]]:
+    warmup_stats = []
+    if args.benchmark_warmup_renders == 0:
+        return warmup_stats
+
+    common_kwargs = _pipeline_kwargs(case)
+    for index in range(args.benchmark_warmup_renders):
+        _restore_processors(union_modules, original_processors)
+        print(
+            f"{case.case_id}: baseline warmup "
+            f"{index + 1}/{args.benchmark_warmup_renders}"
+        )
+        _image, stats = _run_image(
+            pipe,
+            torch=torch,
+            args=case,
+            common_kwargs=common_kwargs,
+            label=f"{case.case_id}:baseline-warmup-{index + 1}",
+        )
+        warmup_stats.append(stats)
+    _restore_processors(union_modules, original_processors)
+    return warmup_stats
 
 
 def _run_case(
@@ -386,6 +459,17 @@ def _run_candidate(
         timing_recorder=timing_recorder,
     )
     _warm_packed_processors(candidate.modules, torch=torch, args=args)
+    shmoosh_warmup_stats = _run_candidate_warmups(
+        pipe,
+        torch=torch,
+        args=case,
+        common_kwargs=common_kwargs,
+        step_state=step_state,
+        candidate_label=candidate.label,
+        candidate_warmup_renders=args.candidate_warmup_renders,
+    )
+    if timing_recorder is not None and shmoosh_warmup_stats:
+        timing_recorder.records.clear()
     shmoosh_image, shmoosh_stats = _run_image(
         pipe,
         torch=torch,
@@ -421,6 +505,8 @@ def _run_candidate(
         "baseline_seconds": baseline_stats["seconds"],
         "shmoosh_seconds": shmoosh_stats["seconds"],
         "speedup": _ratio(baseline_stats["seconds"], shmoosh_stats["seconds"]),
+        "shmoosh_warmup_renders": len(shmoosh_warmup_stats),
+        "shmoosh_warmup_seconds": _stats_seconds(shmoosh_warmup_stats),
         "baseline_image": str(baseline_path),
         "shmoosh_image": str(shmoosh_path),
         "diff_heatmap": str(diff_path),
@@ -457,6 +543,7 @@ def _run_candidate(
         "policy": candidate.policy,
         "baseline": baseline_stats,
         "shmoosh": shmoosh_stats,
+        "shmoosh_warmup": shmoosh_warmup_stats,
         "processor_timing": processor_timing,
         "image_metrics": image_metrics,
         "outputs": {
@@ -467,6 +554,40 @@ def _run_candidate(
     }
     metrics_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return row
+
+
+def _run_candidate_warmups(
+    pipe: Any,
+    *,
+    torch: Any,
+    args: argparse.Namespace,
+    common_kwargs: dict[str, Any],
+    step_state: DenoisingStepState,
+    candidate_label: str,
+    candidate_warmup_renders: int,
+) -> list[dict[str, Any]]:
+    warmup_stats = []
+    if candidate_warmup_renders == 0:
+        return warmup_stats
+    for index in range(candidate_warmup_renders):
+        print(
+            f"{args.case_id}: {candidate_label} warmup "
+            f"{index + 1}/{candidate_warmup_renders}"
+        )
+        _image, stats = _run_image(
+            pipe,
+            torch=torch,
+            args=args,
+            common_kwargs=common_kwargs,
+            label=f"{args.case_id}:{candidate_label}-warmup-{index + 1}",
+            step_state=step_state,
+        )
+        warmup_stats.append(stats)
+    return warmup_stats
+
+
+def _stats_seconds(stats: list[dict[str, Any]]) -> float:
+    return sum(float(row["seconds"]) for row in stats)
 
 
 def _add_phase_timing_columns(
@@ -560,6 +681,8 @@ def _write_summary(
         "baseline_seconds",
         "shmoosh_seconds",
         "speedup",
+        "shmoosh_warmup_renders",
+        "shmoosh_warmup_seconds",
         "processor_timing_seconds",
         "processor_timing_records",
         "shmoosh_cuda_max_memory_allocated_mib",

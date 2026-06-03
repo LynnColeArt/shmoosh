@@ -48,20 +48,25 @@ uv run python -m shmoosh.cli.image_policy_compare \
   --candidate static_topp95_q90=configs/underpaint-juggernaut-sdxl-up0-self-attn1-static-headtopk-topp95-q90-k7-noqjl-policy.json
 ```
 
+The compare CLI now defaults to one unmeasured exact baseline warmup render
+before measured rows. That keeps first-render pipeline setup out of the first
+case timing. Use `--benchmark-warmup-renders 0` only when measuring cold-start
+behavior.
+
 ## Result
 
 | Candidate | Min PSNR | Mean PSNR | Mean speedup | Warm-case speedup | Attention phase |
-| --- | ---: | ---: | ---: | ---: |
+| --- | ---: | ---: | ---: | ---: | ---: |
 | packed K7 control | 52.10 dB | 54.21 dB | 1.071x | 0.989x | 0.747 ms fused packed |
 | static top-p 0.95 q=0.50 | 41.56 dB | 44.81 dB | 1.049x | 0.963x | 13.417 ms sparse materialized |
 | static top-p 0.98 q=0.50 | 43.65 dB | 46.56 dB | 1.076x | 0.953x | 14.169 ms sparse materialized |
 | static top-p 0.95 q=0.90 | 47.30 dB | 49.46 dB | 1.085x | 0.965x | 14.160 ms sparse materialized |
 
 `Warm-case speedup` excludes the first case, where the baseline render was
-11.806 s while the later exact baselines were about 8.55-8.60 s. Because the
-comparison script runs no throwaway baseline warmup before the first measured
-case, the all-case mean speedup is contaminated by first-render overhead and is
-too optimistic.
+11.806 s while the later exact baselines were about 8.55-8.60 s. Because that
+original comparison run had no throwaway baseline warmup before the first
+measured case, the all-case mean speedup was contaminated by first-render
+overhead and was too optimistic.
 
 Per case:
 
@@ -96,6 +101,37 @@ materializes full packed score tensors and spends roughly 13-14 ms per
 quantized attention call, versus about 0.75 ms for the existing fused packed K7
 attention path.
 
+## Warmup-Safe Rerun
+
+After adding the explicit warmup pass, the same suite was rerun to:
+
+```text
+captures/image-policy-compare-juggernaut-static-headtopk-1024-warmup-20260602
+```
+
+The unmeasured warmup render took 12.209 s. The measured `reading-nook`
+baseline then dropped from the earlier 11.806 s cold-start value to 9.363 s.
+
+| Candidate | Min PSNR | Mean PSNR | Mean speedup | Attention phase |
+| --- | ---: | ---: | ---: | ---: |
+| packed K7 control | 52.10 dB | 54.21 dB | 1.025x | 0.703 ms fused packed |
+| static top-p 0.95 q=0.50 | 41.56 dB | 44.81 dB | 1.002x | 13.404 ms sparse materialized |
+| static top-p 0.98 q=0.50 | 43.65 dB | 46.56 dB | 1.009x | 13.802 ms sparse materialized |
+| static top-p 0.95 q=0.90 | 47.30 dB | 49.46 dB | 1.020x | 13.625 ms sparse materialized |
+
+Per-case runtime:
+
+| Candidate | Reading nook | Maple leaf | Misty lake |
+| --- | ---: | ---: | ---: |
+| packed K7 control | 9.363 -> 8.964 s, 1.045x | 8.501 -> 8.297 s, 1.025x | 8.521 -> 8.471 s, 1.006x |
+| static top-p 0.95 q=0.50 | 9.363 -> 9.372 s, 0.999x | 8.501 -> 8.405 s, 1.011x | 8.521 -> 8.543 s, 0.997x |
+| static top-p 0.98 q=0.50 | 9.363 -> 8.898 s, 1.052x | 8.501 -> 8.488 s, 1.001x | 8.521 -> 8.775 s, 0.971x |
+| static top-p 0.95 q=0.90 | 9.363 -> 8.717 s, 1.074x | 8.501 -> 8.499 s, 1.000x | 8.521 -> 8.639 s, 0.986x |
+
+This is the cleaner runtime read: packed K7 has a small end-to-end win on this
+4070 run, but static sparse attention is effectively flat while still losing
+too much image fidelity.
+
 The useful result is negative-positive:
 
 ```text
@@ -104,7 +140,7 @@ Positive:
 
 Negative:
   current static budgets are not good enough to justify a sparse kernel yet.
-  current image runtime reporting needs a warmup-safe benchmark mode.
+  the original image runtime report needed a warmup-safe benchmark mode.
 ```
 
 ## Next Slice
