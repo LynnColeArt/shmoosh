@@ -50,12 +50,18 @@ uv run python -m shmoosh.cli.image_policy_compare \
 
 ## Result
 
-| Candidate | Min PSNR | Mean PSNR | Mean speedup | Attention phase |
+| Candidate | Min PSNR | Mean PSNR | Mean speedup | Warm-case speedup | Attention phase |
 | --- | ---: | ---: | ---: | ---: |
-| packed K7 control | 52.10 dB | 54.21 dB | 1.071x | 0.747 ms fused packed |
-| static top-p 0.95 q=0.50 | 41.56 dB | 44.81 dB | 1.049x | 13.417 ms sparse materialized |
-| static top-p 0.98 q=0.50 | 43.65 dB | 46.56 dB | 1.076x | 14.169 ms sparse materialized |
-| static top-p 0.95 q=0.90 | 47.30 dB | 49.46 dB | 1.085x | 14.160 ms sparse materialized |
+| packed K7 control | 52.10 dB | 54.21 dB | 1.071x | 0.989x | 0.747 ms fused packed |
+| static top-p 0.95 q=0.50 | 41.56 dB | 44.81 dB | 1.049x | 0.963x | 13.417 ms sparse materialized |
+| static top-p 0.98 q=0.50 | 43.65 dB | 46.56 dB | 1.076x | 0.953x | 14.169 ms sparse materialized |
+| static top-p 0.95 q=0.90 | 47.30 dB | 49.46 dB | 1.085x | 0.965x | 14.160 ms sparse materialized |
+
+`Warm-case speedup` excludes the first case, where the baseline render was
+11.806 s while the later exact baselines were about 8.55-8.60 s. Because the
+comparison script runs no throwaway baseline warmup before the first measured
+case, the all-case mean speedup is contaminated by first-render overhead and is
+too optimistic.
 
 Per case:
 
@@ -66,6 +72,15 @@ Per case:
 | static top-p 0.98 q=0.50 | 44.61 dB | 43.65 dB | 51.43 dB |
 | static top-p 0.95 q=0.90 | 47.51 dB | 47.30 dB | 53.57 dB |
 
+Per-case runtime:
+
+| Candidate | Reading nook | Maple leaf | Misty lake |
+| --- | ---: | ---: | ---: |
+| packed K7 control | 11.806 -> 9.699 s, 1.217x | 8.552 -> 8.718 s, 0.981x | 8.600 -> 8.630 s, 0.996x |
+| static top-p 0.95 q=0.50 | 11.806 -> 9.803 s, 1.204x | 8.552 -> 8.887 s, 0.962x | 8.600 -> 8.916 s, 0.965x |
+| static top-p 0.98 q=0.50 | 11.806 -> 8.924 s, 1.323x | 8.552 -> 8.793 s, 0.973x | 8.600 -> 9.203 s, 0.934x |
+| static top-p 0.95 q=0.90 | 11.806 -> 8.916 s, 1.324x | 8.552 -> 8.920 s, 0.959x | 8.600 -> 8.859 s, 0.971x |
+
 ## Read
 
 Static sparse budgets are now wired through the actual image stack, but the
@@ -73,8 +88,11 @@ median-budget policies are too destructive at image level. The conservative
 top-p 0.95 q=0.90 policy is the best of this slice, yet it still trails the
 packed K7 control by about 4.8 dB at minimum PSNR.
 
-The speed numbers should not be treated as a sparse-kernel forecast. The sparse
-path materializes full packed score tensors and spends roughly 13-14 ms per
+The end-to-end speed numbers should not be treated as positive evidence yet.
+The first case made the all-case mean look faster, but the two warm cases show
+the static sparse candidates are slower than baseline, and even the packed K7
+control is roughly flat to slightly slower there. The sparse path also
+materializes full packed score tensors and spends roughly 13-14 ms per
 quantized attention call, versus about 0.75 ms for the existing fused packed K7
 attention path.
 
@@ -86,6 +104,7 @@ Positive:
 
 Negative:
   current static budgets are not good enough to justify a sparse kernel yet.
+  current image runtime reporting needs a warmup-safe benchmark mode.
 ```
 
 ## Next Slice
